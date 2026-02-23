@@ -232,13 +232,20 @@ async def run_historic_crawl(username):
     # Iterar sobre TODO el historial
     async for msg in client.iter_messages(target_chat, limit=None):
         if msg.document or msg.file:
-            fname = getattr(msg.file, 'name', '') or ''
+            fname = getattr(msg.file, 'name', '') or 'list.txt'
             # Solo archivos HOTMAIL HQ (independiente de mayúsculas/minúsculas)
             if "hotmail hq" in fname.lower() or "hotmail hq" in (msg.message or "").lower():
                 files_found += 1
-                local_path = os.path.join(DOWNLOAD_DIR, f"deep_{int(time.time())}_{fname if fname else 'list.txt'}")
-                print(f"   📥 [{files_found}] Descargando: {fname}")
-                await msg.download_media(local_path)
+                
+                # CACHE LOGIC: Deterministic filename using Message ID
+                cache_name = f"hq_{msg.id}_{fname}"
+                local_path = os.path.join(DOWNLOAD_DIR, cache_name)
+                
+                if os.path.exists(local_path):
+                    print(f"   ♻️  Usando caché: {cache_name}")
+                else:
+                    print(f"   📥 [{files_found}] Descargando: {fname}")
+                    await msg.download_media(local_path)
                 
                 # Procesar el archivo (esto es lo que consume tiempo)
                 # Lo hacemos en el mismo hilo de crawl para forzar 'tiempo al tiempo'
