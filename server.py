@@ -23,6 +23,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__, static_folder='.', template_folder='.')
 app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(24)
 audit_queues = {}
+stop_flags = {} # Track stop signal for manual audits
 
 DB_NAME = "database.db"
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
@@ -134,17 +135,15 @@ def emit_event(q, event_type, data):
         print(f"[EVENT] {event_type} | {data}")
 
 
-def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_chat_id="", multi_user=False, hit_buffer=None, target_user_filter=None):
+def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_chat_id="", multi_user=False, hit_buffer=None, target_user_filter=None, session_id=None):
     """
     Flujo 7 pasos (basado en test_flow_dlp.py):
-    1. Auth page     → microsoftonline.com con UA android
-    2. Tokens PPFT   → extrae PPFT + urlPost
-    3. Login         → envía credenciales, detecta errores/2FA
-    4. Auth Code     → extrae code del Location header
-    5. Access Token  → intercambia code por Bearer token
-    6. Perfil        → substrate.office.com
-    7. Búsqueda DLP  → outlook.live.com/search con Bearer token
     """
+    # Check for stop flag
+    if session_id and stop_flags.get(session_id):
+        emit_event(q, "warning", {"message": "Proceso detenido por el usuario."})
+        return
+
     classification = "ERROR"
     session = http_requests.Session()
 
@@ -901,9 +900,14 @@ def start_audit():
         })
 
         for i, (em, pwd) in enumerate(creds):
+            # 1. Check if user stopped the process
+            if stop_flags.get(session_id):
+                emit_event(q, "warning", {"message": "Auditoría cancelada por el usuario."})
+                break
+
             emit_event(q, "account_start", {"email": em, "index": i + 1, "total": len(creds)})
             proxy = random.choice(proxies) if proxies else None
-            run_audit(q, em, pwd, keyword, sender, proxy, tg_chat_id)
+            run_audit(q, em, pwd, keyword, sender, proxy, tg_chat_id, session_id=session_id)
 
             if i < len(creds) - 1:
                 pause = random.uniform(2.5, 5.0)
@@ -911,9 +915,20 @@ def start_audit():
                 time.sleep(pause)
 
         emit_event(q, "all_done", {})
+        # Cleanup stop flag
+        if session_id in stop_flags:
+            del stop_flags[session_id]
 
     threading.Thread(target=audit_thread, daemon=True).start()
     return jsonify({"session_id": session_id, "total": len(creds)})
+
+@app.route('/api/stop-audit', methods=['POST'])
+def stop_audit():
+    sid = request.json.get('session_id')
+    if sid:
+        stop_flags[sid] = True
+        return jsonify({"message": "Deteniendo auditoría..."})
+    return jsonify({"error": "No hay sesión activa"}), 400
 
 
 @app.route('/api/stream/<session_id>')

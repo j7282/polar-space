@@ -1029,30 +1029,23 @@
                         al encontrar un objetivo</div>
                 </div>
 
-                <button class="btn-audit" id="btnAudit" onclick="startAudit()">
-                    <span>🚀</span> INICIAR AUDITORÍA
-                </button>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn-audit" id="btnAudit" onclick="startAudit()" style="flex:1;">
+                        <span>🚀</span> INICIAR AUDITORÍA
+                    </button>
+                    <button class="btn-audit" id="btnStopAudit" onclick="stopAudit()"
+                        style="display:none; width:auto; background:rgba(239, 68, 68, 0.1); color:var(--red); border:1px solid rgba(239, 68, 68, 0.2);">
+                        <span>🛑</span> DETENER
+                    </button>
+                </div>
 
                 <button class="btn-deep-scan" id="btnDeepScan" onclick="triggerDeepScan()">
                     <span>📂</span> ESCANEO PROFUNDO DE HISTORIAL
                 </button>
-            </div>
 
-            <!-- RIGHT: Flow + Log + Results -->
-            <div class="right-panel">
-                <!-- Current Account -->
-                <div class="current-account hidden" id="currentAccount">
-                    <div class="spinner" id="currentSpinner"></div>
-                    <div>
-                        <div class="ca-email" id="currentEmail">—</div>
-                        <div style="font-size:11px; color:var(--text-dim);" id="currentStatus">Esperando...</div>
-                    </div>
-                    <div class="ca-progress" id="currentProgress">0/0</div>
-                </div>
-
-                <!-- DEEP SCAN STATUS CARD -->
+                <!-- DEEP SCAN STATUS CARD (Moved here for better visibility) -->
                 <div class="card" id="deepScanStatusCard"
-                    style="display:none; margin-bottom: 24px; border-left: 4px solid #ffa500;">
+                    style="display:none; margin-top: 24px; border-left: 4px solid #ffa500; background: rgba(255,165,0,0.05);">
                     <div class="card-title" style="color: #ffa500;">📂 ESTADO DE ESCANEO PROFUNDO</div>
                     <div style="display: flex; justify-content: space-between; align-items: flex-end;">
                         <div>
@@ -1065,12 +1058,25 @@
                         <div style="display: flex; gap: 8px;">
                             <button class="btn-update-gate" id="btnPauseScan" onclick="controlScan('pause')"
                                 style="width: auto; padding: 8px 16px; background: rgba(255, 165, 0, 0.1); color: #ffa500; border: 1px solid rgba(255, 165, 0, 0.2); margin:0;">⏸️
-                                PAUSAR</button>
+                                PAUSA</button>
                             <button class="btn-update-gate" id="btnResumeScan" onclick="controlScan('resume')"
                                 style="display:none; width: auto; padding: 8px 16px; background: rgba(34, 197, 94, 0.1); color: var(--green); border: 1px solid rgba(34, 197, 94, 0.2); margin:0;">▶️
-                                REANUDAR</button>
+                                SEGUIR</button>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- RIGHT: Flow + Log + Results -->
+            <div class="right-panel">
+                <!-- Current Account -->
+                <div class="current-account hidden" id="currentAccount">
+                    <div class="spinner" id="currentSpinner"></div>
+                    <div>
+                        <div class="ca-email" id="currentEmail">—</div>
+                        <div style="font-size:11px; color:var(--text-dim);" id="currentStatus">Esperando...</div>
+                    </div>
+                    <div class="ca-progress" id="currentProgress">0/0</div>
                 </div>
 
                 <!-- Flow Diagram -->
@@ -1158,6 +1164,7 @@
         let resultIndex = 0;
         let pendingDlpCount = {}; // email -> count (populated by dlp_result event)
         let pendingRows = {};     // email -> tr element (to update count after done)
+        let currentSessionId = null; // Track current manual audit
 
         function getTime() {
             const now = new Date();
@@ -1293,6 +1300,9 @@
                     resetButton();
                     return;
                 }
+
+                currentSessionId = data.session_id;
+                document.getElementById('btnStopAudit').style.display = 'block';
 
                 addLog('info', `Iniciando auditoría: ${data.total} cuentas`);
 
@@ -1451,6 +1461,30 @@
             btn.disabled = false;
             btn.classList.remove('running');
             btn.innerHTML = '<span>🚀</span> INICIAR AUDITORÍA';
+            document.getElementById('btnStopAudit').style.display = 'none';
+        }
+
+        async function stopAudit() {
+            if (!currentSessionId) return;
+            const btn = document.getElementById('btnStopAudit');
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span>...';
+
+            try {
+                const res = await fetch('/api/stop-audit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: currentSessionId })
+                });
+                const data = await res.json();
+                addLog('warn', data.message);
+            } catch (e) {
+                addLog('error', 'Error al solicitar detención');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span>🛑</span> DETENER';
+                currentSessionId = null;
+            }
         }
 
         // ═══ AUTHENTICATION LOGIC ═══
