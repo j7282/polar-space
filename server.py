@@ -725,6 +725,8 @@ def start_audit():
     if not creds:
         return jsonify({"error": "Formato: correo@hotmail.com:contraseña"}), 400
 
+    tg_chat_id = data.get('tgChatId', '').strip()
+
     proxies = load_proxies_from_text(proxies_text) if proxies_text else []
 
     # ── Render fallback: load all proxies from DEFAULT_PROXIES env var ──
@@ -749,7 +751,7 @@ def start_audit():
         for i, (em, pwd) in enumerate(creds):
             emit_event(q, "account_start", {"email": em, "index": i + 1, "total": len(creds)})
             proxy = random.choice(proxies) if proxies else None
-            run_audit(q, em, pwd, keyword, sender, proxy, tgChatId)
+            run_audit(q, em, pwd, keyword, sender, proxy, tg_chat_id)
 
             if i < len(creds) - 1:
                 pause = random.uniform(2.5, 5.0)
