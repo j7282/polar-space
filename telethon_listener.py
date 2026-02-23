@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import threading
+import base64
 from urllib.parse import urlparse
 
 try:
@@ -20,12 +21,25 @@ API_HASH = "5980c7a831a590bd1e3b58648ce1e1e2"
 # Session name (creates a polar_bot.session file to keep you logged in)
 SESSION_NAME = "polar_bot"
 
+# ── Render Deployment: Load session from env var if available ──
+SESSION_B64 = os.environ.get("SESSION_B64", "")
+if SESSION_B64:
+    print("🔑 Cargando sesión desde variable de entorno SESSION_B64...")
+    try:
+        session_bytes = base64.b64decode(SESSION_B64)
+        with open(f"{SESSION_NAME}.session", "wb") as sf:
+            sf.write(session_bytes)
+        print(f"✅ Sesión escrita en {SESSION_NAME}.session ({len(session_bytes)} bytes)")
+    except Exception as e:
+        print(f"⚠️ Error decodificando sesión: {e}")
+
 DOWNLOAD_DIR = "incoming_targets"
 
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+
 
 # =======================================================
 # DLP SCANNER INTEGRATION
