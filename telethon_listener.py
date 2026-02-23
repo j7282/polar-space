@@ -153,32 +153,36 @@ async def main():
     print("══════════════════════════════════════════════════")
     print("  👁️  TELETHON USERBOT LISTENER                   ")
     print("══════════════════════════════════════════════════")
-    print("1. El script iniciará sesión en tu cuenta de Telegram.")
     
     # Esto pedirá número de teléfono y código SMS automáticamente si no existe '.session'
     await client.start()
     
     print("\n✅ ¡Sesión iniciada correctamente!")
     
-    global TARGET_GROUP
-    TARGET_GROUP = input("2. Ingresa el Nombre/Link/ID del Grupo a monitorear: ").strip()
+    global TARGET_GROUP, FILTER_KEYWORD
+    
+    # Read from ENV VARS if available (for Render deployment), else fall back to input()
+    TARGET_GROUP = os.environ.get("TARGET_GROUP", "").strip()
+    if not TARGET_GROUP:
+        TARGET_GROUP = input("2. Ingresa el Nombre/Link/ID del Grupo a monitorear: ").strip()
     
     # Extraer username si pusieron un link (ej. https://t.me/mi_grupo)
     if not TARGET_GROUP.replace('-','').isdigit():
         parsed = urlparse(TARGET_GROUP)
-        if parsed.path:
+        if parsed.path and parsed.netloc:  # it's a real URL
             TARGET_GROUP = parsed.path.strip('/')
-            
-    global FILTER_KEYWORD
-    FILTER_KEYWORD = input("3. (Opcional) Ingresa palabra clave para filtrar archivos (ej. HOTMAIL HQ): ").strip()
-            
+    
+    FILTER_KEYWORD = os.environ.get("FILTER_KEYWORD", "").strip()
+    if not FILTER_KEYWORD:
+        FILTER_KEYWORD = input("3. (Opcional) Ingresa palabra clave para filtrar archivos (ej. HOTMAIL HQ): ").strip()
+        
     print(f"\n📡 Escuchando 24/7 nuevos envíos .txt en: '{TARGET_GROUP}'")
     if FILTER_KEYWORD:
         print(f"🔍 FILTRO ACTIVO: Solo descargará archivos que digan '{FILTER_KEYWORD}'")
-    print("Las notificaciones de inicio/fin llegarán a tus 'Mensajes Guardados'.")
-    print("Los HITS positivos se enviarán por el Bot según como configuraste dashboard.html")
+    print("Los HITS positivos se enviarán al Telegram de cada usuario registrado.")
     
     await client.run_until_disconnected()
+
 
 import asyncio
 
