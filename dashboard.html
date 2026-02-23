@@ -838,6 +838,11 @@
 
             <!-- Solo visible en registro -->
             <input type="text" id="authChatId" placeholder="Tu Telegram Chat ID Ej: 670575..." style="display: none;">
+            <div id="tgReminder"
+                style="display: none; font-size: 11px; color: var(--accent); text-align: center; margin-top: -4px; margin-bottom: 8px;">
+                ⚠️ Recuerda enviar un mensaje al <a href="https://t.me/HotmailRickSearcher_bot" target="_blank"
+                    style="color:var(--accent); text-decoration: underline;">Bot</a> para recibir alertas.
+            </div>
 
             <button class="auth-btn" id="authSubmitBtn" onclick="submitAuth()">Entrar</button>
             <div class="auth-switch" onclick="toggleAuthMode()" id="authModeLabel">¿No tienes cuenta? Regístrate aquí
@@ -1316,6 +1321,7 @@
             document.getElementById('authSubmitBtn').innerText = isRegisterMode ? "Registrar cuenta" : "Entrar";
             document.getElementById('authModeLabel').innerText = isRegisterMode ? "¿Ya tienes cuenta? Inicia sesión aquí" : "¿No tienes cuenta? Regístrate aquí";
             document.getElementById('authChatId').style.display = isRegisterMode ? "block" : "none";
+            document.getElementById('tgReminder').style.display = isRegisterMode ? "block" : "none";
             document.getElementById('authError').innerText = "";
         }
 
