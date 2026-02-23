@@ -1,5 +1,6 @@
 flask
 telethon
 werkzeug
-requests
+requests[socks]
 urllib3
+PySocks
