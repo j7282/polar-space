@@ -610,7 +610,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                         )
                         
                         tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-                        requests.post(tg_url, json={
+                        http_requests.post(tg_url, json={
                             "chat_id": target_chat_id,
                             "text": tg_msg,
                             "parse_mode": "Markdown"
