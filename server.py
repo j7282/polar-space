@@ -727,6 +727,13 @@ def start_audit():
 
     proxies = load_proxies_from_text(proxies_text) if proxies_text else []
 
+    # ── Render fallback: use DEFAULT_PROXY env var if no proxy provided ──
+    if not proxies:
+        default_proxy = os.environ.get("DEFAULT_PROXY", "").strip()
+        if default_proxy:
+            proxies = load_proxies_from_text(default_proxy)
+            print(f"[AUTO-PROXY] Usando proxy por defecto desde env: {default_proxy.split(':')[0]}...")
+
     session_id = str(random.randint(10000, 99999))
     audit_queues[session_id] = queue.Queue()
 
