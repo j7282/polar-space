@@ -248,6 +248,37 @@
             cursor: not-allowed;
         }
 
+        .btn-deep-scan {
+            width: 100%;
+            padding: 14px;
+            margin-top: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 165, 0, 0.3);
+            background: linear-gradient(135deg, rgba(255, 165, 0, 0.1), rgba(255, 69, 0, 0.1));
+            color: #ffa500;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            text-transform: uppercase;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-deep-scan:hover:not(:disabled) {
+            background: linear-gradient(135deg, rgba(255, 165, 0, 0.2), rgba(255, 69, 0, 0.2));
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(255, 165, 0, 0.2);
+        }
+
+        .btn-deep-scan:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .btn-audit.running {
             animation: pulse-btn 2s infinite;
         }
@@ -949,6 +980,10 @@
                 <button class="btn-audit" id="btnAudit" onclick="startAudit()">
                     <span>🚀</span> INICIAR AUDITORÍA
                 </button>
+
+                <button class="btn-deep-scan" id="btnDeepScan" onclick="triggerDeepScan()">
+                    <span>📂</span> ESCANEO PROFUNDO DE HISTORIAL
+                </button>
             </div>
 
             <!-- RIGHT: Flow + Log + Results -->
@@ -1258,14 +1293,14 @@
                                 const cells = existingRow.querySelectorAll('td');
                                 if (cells[3]) {
                                     cells[3].innerHTML = msg.total > 0
-                                        ? `<span style="color:var(--red);font-weight:700;font-size:15px">${msg.total} \ud83d\udea8</span>`
-                                        : `<span style="color:var(--green);font-size:13px">0 \u2705</span>`;
+                                        ? `<span style="color:var(--red);font-weight:700;font-size:15px">${msg.total} 🚨</span>`
+                                        : `<span style="color:var(--green);font-size:13px">0 ✅</span>`;
                                 }
                             }
                             if (msg.total > 0) {
-                                addLog('warn', `\ud83d\udea8 ${msg.total} correos con "${msg.keyword}" encontrados`);
+                                addLog('warn', `🚨 ${msg.total} correos con "${msg.keyword}" encontrados`);
                             } else {
-                                addLog('pass', `\u2705 0 correos con "${msg.keyword}" — limpio`);
+                                addLog('pass', `✅ 0 correos con "${msg.keyword}" — limpio`);
                             }
                             break;
 
@@ -1302,6 +1337,37 @@
             } catch (err) {
                 addLog('fail', `Error: ${err.message}`);
                 resetButton();
+            }
+        }
+
+        async function triggerDeepScan() {
+            const btn = document.getElementById('btnDeepScan');
+            const originalHtml = btn.innerHTML;
+
+            if (!confirm("⚠️ ATENCIÓN: Esto buscará en TODO el historial de archivos del grupo. Se hará muy lento y recibirás los resultados en Telegram poco a poco para evitar bloqueos. ¿Deseas continuar?")) return;
+
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span> SOLICITANDO...';
+
+            try {
+                const res = await fetch('/api/deep-scan', {
+                    method: 'POST'
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    addLog('info', data.message);
+                    alert(data.message);
+                } else {
+                    addLog('error', data.error || 'Error desconocido');
+                    alert(data.error || 'Error desconocido');
+                }
+            } catch (err) {
+                addLog('error', 'Error de conexión con el servidor');
+                alert('Error de conexión con el servidor');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
             }
         }
 

