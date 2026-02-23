@@ -179,7 +179,7 @@ async def check_and_process_deep_scans():
             conn = get_db_conn()
             c = conn.cursor()
             c.execute(q("""
-                SELECT s.id, s.username 
+                SELECT s.id, s.username, s.last_msg_id, s.files_scanned 
                 FROM scan_requests s
                 JOIN users u ON s.username = u.username
                 WHERE s.status = 'pending' AND u.allow_247 = 1
@@ -188,14 +188,14 @@ async def check_and_process_deep_scans():
             job = c.fetchone()
             
             if job:
-                job_id, username = job
-                print(f"🚀 Iniciando Deep Scan para: {username}")
+                job_id, username, last_msg_id, files_scanned = job
+                print(f"🚀 Iniciando Deep Scan para: {username} (Desde: {last_msg_id or 'Principio'})")
                 c.execute(q("UPDATE scan_requests SET status = 'processing' WHERE id = ?"), (job_id,))
                 conn.commit()
                 conn.close()
                 
                 try:
-                    await run_historic_crawl(username)
+                    await run_historic_crawl(job_id, username, last_msg_id, files_scanned)
                     
                     conn = get_db_conn()
                     c = conn.cursor()
@@ -217,8 +217,9 @@ async def check_and_process_deep_scans():
             
         await asyncio.sleep(60) # Poll every minute
 
-async def run_historic_crawl(username):
+async def run_historic_crawl(job_id, username, last_msg_id, start_count):
     """Crawls history, downloads HOTMAIL HQ files and scans them for a specific user."""
+    from server import get_db_conn, q
     # Ensure client is connected
     if not client.is_connected():
         await client.connect()
@@ -234,9 +235,20 @@ async def run_historic_crawl(username):
 
     print(f"📑 Crawleando historia en '{TARGET_GROUP}' para '{username}'...")
     
-    files_found = 0
-    # Iterar sobre TODO el historial
-    async for msg in client.iter_messages(target_chat, limit=None):
+    files_found = start_count or 0
+    # Iterar sobre TODO el historial. Si hay last_msg_id, empezamos desde ahí.
+    async for msg in client.iter_messages(target_chat, limit=None, offset_id=last_msg_id if last_msg_id else 0):
+        # 1. Verificar si el usuario pausó el proceso
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute(q("SELECT status FROM scan_requests WHERE id = ?"), (job_id,))
+        status_row = cur.fetchone()
+        conn.close()
+        
+        if status_row and status_row[0] == 'paused':
+            print(f"⏸️ Deep Scan PAUSADO por el usuario: {username}")
+            return # Salimos del loop pero el status se queda en 'paused'
+
         if msg.document or msg.file:
             fname = getattr(msg.file, 'name', '') or 'list.txt'
             # Solo archivos HOTMAIL HQ (independiente de mayúsculas/minúsculas)
@@ -253,10 +265,17 @@ async def run_historic_crawl(username):
                     print(f"   📥 [{files_found}] Descargando: {fname}")
                     await msg.download_media(local_path)
                 
-                # Procesar el archivo (esto es lo que consume tiempo)
-                # Lo hacemos en el mismo hilo de crawl para forzar 'tiempo al tiempo'
+                # Procesar el archivo
                 process_file_and_scan(local_path, target_user_filter=username)
                 
+                # 2. Guardar progreso parcial
+                conn = get_db_conn()
+                cur = conn.cursor()
+                cur.execute(q("UPDATE scan_requests SET last_msg_id = ?, files_scanned = ? WHERE id = ?"), 
+                            (msg.id, files_found, job_id))
+                conn.commit()
+                conn.close()
+
                 # 'Tiempo al tiempo' - delay entre archivos históricos
                 print(f"   ⏳ Esperando entre archivos...")
                 await asyncio.sleep(random.uniform(10, 20))

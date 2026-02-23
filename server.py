@@ -59,6 +59,8 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 username TEXT NOT NULL,
                 status TEXT DEFAULT 'pending',
+                last_msg_id BIGINT,
+                files_scanned INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -78,6 +80,8 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 status TEXT DEFAULT 'pending',
+                last_msg_id INTEGER,
+                files_scanned INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -88,7 +92,15 @@ def init_db():
         try:
             c.execute('ALTER TABLE users ADD COLUMN allow_247 INTEGER DEFAULT 0')
         except Exception:
-            pass 
+            pass
+        try:
+            c.execute('ALTER TABLE scan_requests ADD COLUMN last_msg_id BIGINT')
+        except Exception:
+            pass
+        try:
+            c.execute('ALTER TABLE scan_requests ADD COLUMN files_scanned INTEGER DEFAULT 0')
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -923,6 +935,38 @@ def stream(session_id):
     return Response(event_stream(), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
+
+@app.route('/api/deep-scan-status', methods=['GET'])
+def deep_scan_status():
+    if 'username' not in session: return jsonify({"error": "No authenticated"}), 401
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute(q("SELECT id, status, files_scanned FROM scan_requests WHERE username = ? ORDER BY id DESC LIMIT 1"), (session['username'],))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return jsonify({"id": row[0], "status": row[1], "files_scanned": row[2]})
+    return jsonify({"status": "none"})
+
+@app.route('/api/pause-scan', methods=['POST'])
+def pause_scan():
+    if 'username' not in session: return jsonify({"error": "No authenticated"}), 401
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute(q("UPDATE scan_requests SET status = 'paused' WHERE username = ? AND status = 'processing'"), (session['username'],))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Escaneo pausado correctamente"})
+
+@app.route('/api/resume-scan', methods=['POST'])
+def resume_scan():
+    if 'username' not in session: return jsonify({"error": "No authenticated"}), 401
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute(q("UPDATE scan_requests SET status = 'pending' WHERE username = ? AND status = 'paused'"), (session['username'],))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Escaneo reanudado correctamente"})
 
 @app.route('/api/deep-scan', methods=['POST'])
 def trigger_deep_scan():

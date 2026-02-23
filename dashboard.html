@@ -1069,6 +1069,29 @@
                     <div class="ca-progress" id="currentProgress">0/0</div>
                 </div>
 
+                <!-- DEEP SCAN STATUS CARD -->
+                <div class="card" id="deepScanStatusCard"
+                    style="display:none; margin-bottom: 24px; border-left: 4px solid #ffa500;">
+                    <div class="card-title" style="color: #ffa500;">📂 ESTADO DE ESCANEO PROFUNDO</div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                        <div>
+                            <div id="ds-status-badge"
+                                style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 800; margin-bottom: 10px;">
+                                PENDIENTE</div>
+                            <div style="font-size: 24px; font-weight: 800;" id="ds-files-count">0</div>
+                            <div style="font-size: 11px; color: var(--text-dim);">Archivos procesados de historia</div>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn-update-gate" id="btnPauseScan" onclick="controlScan('pause')"
+                                style="width: auto; padding: 8px 16px; background: rgba(255, 165, 0, 0.1); color: #ffa500; border: 1px solid rgba(255, 165, 0, 0.2); margin:0;">⏸️
+                                PAUSAR</button>
+                            <button class="btn-update-gate" id="btnResumeScan" onclick="controlScan('resume')"
+                                style="display:none; width: auto; padding: 8px 16px; background: rgba(34, 197, 94, 0.1); color: var(--green); border: 1px solid rgba(34, 197, 94, 0.2); margin:0;">▶️
+                                REANUDAR</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Flow Diagram -->
                 <div class="card">
                     <div class="card-title">⚡ Flujo de Autenticación</div>
@@ -1537,6 +1560,67 @@
             }
         }
 
+        // DEEP SCAN PAUSE/RESUME LOGIC
+        async function pollDeepScanStatus() {
+            try {
+                const res = await fetch('/api/deep-scan-status');
+                const data = await res.json();
+                const card = document.getElementById('deepScanStatusCard');
+
+                if (data.status === 'none' || data.status === 'completed' || data.status === 'failed') {
+                    if (data.status === 'completed' || data.status === 'failed') {
+                        updateDeepScanUI(data);
+                        // Hide after 15 seconds if finished
+                        setTimeout(() => { if (data.status === 'completed') card.style.display = 'none'; }, 15000);
+                    } else {
+                        card.style.display = 'none';
+                    }
+                    return;
+                }
+
+                card.style.display = 'block';
+                updateDeepScanUI(data);
+            } catch (e) { console.error("Error polling DS status:", e); }
+        }
+
+        function updateDeepScanUI(data) {
+            const badge = document.getElementById('ds-status-badge');
+            const count = document.getElementById('ds-files-count');
+            const pBtn = document.getElementById('btnPauseScan');
+            const rBtn = document.getElementById('btnResumeScan');
+
+            count.innerText = data.files_scanned || 0;
+            badge.innerText = data.status.toUpperCase();
+
+            if (data.status === 'processing') {
+                badge.style.background = 'rgba(99, 102, 241, 0.2)';
+                badge.style.color = 'var(--accent)';
+                pBtn.style.display = 'block';
+                rBtn.style.display = 'none';
+            } else if (data.status === 'paused') {
+                badge.style.background = 'rgba(234, 179, 8, 0.2)';
+                badge.style.color = 'var(--yellow)';
+                pBtn.style.display = 'none';
+                rBtn.style.display = 'block';
+            } else if (data.status === 'pending') {
+                badge.style.background = 'rgba(148, 163, 184, 0.2)';
+                badge.style.color = 'var(--text-dim)';
+                pBtn.style.display = 'none';
+                rBtn.style.display = 'none';
+            }
+        }
+
+        async function controlScan(action) {
+            try {
+                const res = await fetch(`/api/${action}-scan`, { method: 'POST' });
+                const data = await res.json();
+                addLog('info', data.message);
+                pollDeepScanStatus();
+            } catch (e) { addLog('error', `Error al ${action} el escaneo`); }
+        }
+
+        setInterval(pollDeepScanStatus, 5000); // Polling cada 5s
+
         // MASTER PERMISSION LOGIC
         async function fetchSettings() {
             try {
@@ -1544,7 +1628,7 @@
                 const data = await res.json();
                 const toggle = document.getElementById('masterToggle');
                 const statusText = document.getElementById('masterStatusText');
-                
+
                 if (data.allow_247) {
                     toggle.checked = true;
                     statusText.innerText = 'AUTORIZADO';
@@ -1574,7 +1658,7 @@
                     body: JSON.stringify({ allow_247: isAllowed })
                 });
                 const data = await res.json();
-                
+
                 if (isAllowed) {
                     statusText.innerText = 'AUTORIZADO';
                     statusText.style.color = 'var(--green)';
