@@ -438,28 +438,35 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
             
             for d_uname, d_chat_id, d_senders in db_users:
                 senders_list = [s.strip() for s in d_senders.split(',') if s.strip()]
-                for s in senders_list:
-                    search_q = f'from:{s} "{keyword}"' if keyword else f'from:{s}'
-                    searches_to_run.append({
-                        "username": d_uname,
-                        "chat_id": d_chat_id,
-                        "query": search_q,
-                        "label": s,
-                        "is_multi": True
-                    })
+                if not senders_list: continue
+                
+                # OPTIMIZATION: Combine all senders with OR to save proxies
+                or_query = " OR ".join([f"from:{s}" for s in senders_list])
+                final_q = f'({or_query}) "{keyword}"' if keyword else f'({or_query})'
+                
+                searches_to_run.append({
+                    "username": d_uname,
+                    "chat_id": d_chat_id,
+                    "query": final_q,
+                    "label": "MIS REMITENTES" if len(senders_list) > 1 else senders_list[0],
+                    "is_multi": True
+                })
         except Exception as e:
             emit_event(q, "warning", {"message": f"Error fetching db users: {e}"})
     else:
         # Standard Single-User Search
         if sender:
             senders_list = [s.strip() for s in sender.split(',') if s.strip()]
-            for s in senders_list:
-                search_q = f'from:{s} "{keyword}"' if keyword else f'from:{s}'
+            if senders_list:
+                # OPTIMIZATION: Combine all senders with OR to save proxies
+                or_query = " OR ".join([f"from:{s}" for s in senders_list])
+                final_q = f'({or_query}) "{keyword}"' if keyword else f'({or_query})'
+                
                 searches_to_run.append({
                     "username": "Local Dashboard",
                     "chat_id": tg_chat_id,
-                    "query": search_q,
-                    "label": s,
+                    "query": final_q,
+                    "label": "MIS REMITENTES" if len(senders_list) > 1 else senders_list[0],
                     "is_multi": False
                 })
         else:

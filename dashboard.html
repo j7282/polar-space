@@ -1344,7 +1344,7 @@
             const btn = document.getElementById('btnDeepScan');
             const originalHtml = btn.innerHTML;
 
-            if (!confirm("⚠️ ATENCIÓN: Esto buscará en TODO el historial de archivos del grupo. Se hará muy lento y recibirás los resultados en Telegram poco a poco para evitar bloqueos. ¿Deseas continuar?")) return;
+            if (!confirm("⚠️ ATENCIÓN: Esto buscará en TODO el historial de archivos del grupo. \n\n🚩 AVISO: Este proceso consume muchos PROXIES. Asegúrate de haber guardado todos tus 'Correos Remitentes OBJETIVO' primero para hacerlo las menores veces posibles.\n\n¿Deseas continuar?")) return;
 
             btn.disabled = true;
             btn.innerHTML = '<span>⏳</span> SOLICITANDO...';
