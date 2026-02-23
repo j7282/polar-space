@@ -178,7 +178,13 @@ async def check_and_process_deep_scans():
         try:
             conn = get_db_conn()
             c = conn.cursor()
-            c.execute(q("SELECT id, username FROM scan_requests WHERE status = 'pending' LIMIT 1"))
+            c.execute(q("""
+                SELECT s.id, s.username 
+                FROM scan_requests s
+                JOIN users u ON s.username = u.username
+                WHERE s.status = 'pending' AND u.allow_247 = 1
+                LIMIT 1
+            """))
             job = c.fetchone()
             
             if job:

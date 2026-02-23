@@ -295,6 +295,57 @@
             }
         }
 
+        /* ═══ TOGGLE SWITCH ═══ */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background-color: #334155;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--green);
+            box-shadow: 0 0 10px var(--green-glow);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(26px);
+        }
+
+        .master-control-status {
+            font-size: 11px;
+            font-weight: 700;
+            margin-left: 10px;
+            text-transform: uppercase;
+        }
+
         /* ═══ RIGHT PANEL ═══ */
         .right-panel {
             display: flex;
@@ -931,6 +982,26 @@
         <div class="main-grid">
             <!-- LEFT: Input Panel -->
             <div class="input-panel">
+                <!-- MASTER CONTROL CARD -->
+                <div class="card"
+                    style="border-color: var(--accent); background: linear-gradient(135deg, var(--bg-card), rgba(99, 102, 241, 0.05));">
+                    <div class="card-title" style="color: var(--accent);">🛡️ CONTROL MAESTRO</div>
+                    <div
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="font-size: 13px; font-weight: 500;">Permitir Procesos 24/7</span>
+                        <label class="switch">
+                            <input type="checkbox" id="masterToggle" onchange="updateMasterPermission()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div id="masterStatusText" class="master-control-status" style="color: var(--text-dim);">DESACTIVADO
+                    </div>
+                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 10px; line-height: 1.4;">
+                        ⚠️ Cuando está activo, autorizas al servidor a realizar auditorías automáticas y escaneos de
+                        historial sin tu presencia.
+                    </div>
+                </div>
+
                 <div class="card">
                     <div class="card-title">📧 Credenciales</div>
                     <label>Correos (correo:contraseña)</label>
@@ -1465,6 +1536,63 @@
                 location.reload();
             }
         }
+
+        // MASTER PERMISSION LOGIC
+        async function fetchSettings() {
+            try {
+                const res = await fetch('/api/get-settings');
+                const data = await res.json();
+                const toggle = document.getElementById('masterToggle');
+                const statusText = document.getElementById('masterStatusText');
+                
+                if (data.allow_247) {
+                    toggle.checked = true;
+                    statusText.innerText = 'AUTORIZADO';
+                    statusText.style.color = 'var(--green)';
+                } else {
+                    toggle.checked = false;
+                    statusText.innerText = 'DESACTIVADO';
+                    statusText.style.color = 'var(--text-dim)';
+                }
+            } catch (e) {
+                console.error("Error fetching settings:", e);
+            }
+        }
+
+        async function updateMasterPermission() {
+            const toggle = document.getElementById('masterToggle');
+            const statusText = document.getElementById('masterStatusText');
+            const isAllowed = toggle.checked;
+
+            statusText.innerText = 'GUARDANDO...';
+            statusText.style.color = 'var(--yellow)';
+
+            try {
+                const res = await fetch('/api/update-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ allow_247: isAllowed })
+                });
+                const data = await res.json();
+                
+                if (isAllowed) {
+                    statusText.innerText = 'AUTORIZADO';
+                    statusText.style.color = 'var(--green)';
+                    addLog('success', '🔐 PERMISO CONCEDIDO: El bot ahora puede trabajar 24/7 en el servidor.');
+                } else {
+                    statusText.innerText = 'DESACTIVADO';
+                    statusText.style.color = 'var(--text-dim)';
+                    addLog('warning', '🛑 PERMISO REVOCADO: Se han detenido los procesos de fondo.');
+                }
+            } catch (e) {
+                addLog('error', 'Error al guardar permiso maestro');
+            }
+        }
+
+        window.addEventListener('load', () => {
+            checkSession(); // Changed checkAuth to checkSession to match existing function
+            fetchSettings();
+        });
 
         async function updateGate() {
             const chat_id = document.getElementById('tgChatIdInput').value.trim();

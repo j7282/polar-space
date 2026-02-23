@@ -50,7 +50,8 @@ def init_db():
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 telegram_chat_id TEXT,
-                saved_senders TEXT
+                saved_senders TEXT,
+                allow_247 INTEGER DEFAULT 0
             )
         ''')
         c.execute('''
@@ -68,7 +69,8 @@ def init_db():
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 telegram_chat_id TEXT,
-                saved_senders TEXT
+                saved_senders TEXT,
+                allow_247 INTEGER DEFAULT 0
             )
         ''')
         c.execute('''
@@ -82,7 +84,11 @@ def init_db():
         try:
             c.execute('ALTER TABLE users ADD COLUMN saved_senders TEXT')
         except Exception:
-            pass  # Column already exists
+            pass
+        try:
+            c.execute('ALTER TABLE users ADD COLUMN allow_247 INTEGER DEFAULT 0')
+        except Exception:
+            pass 
     conn.commit()
     conn.close()
 
@@ -425,12 +431,12 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         try:
             if target_user_filter:
                 sql = ("SELECT username, telegram_chat_id, saved_senders FROM users "
-                       "WHERE username = ? AND saved_senders IS NOT NULL AND saved_senders != '' "
+                       "WHERE username = ? AND allow_247 = 1 AND saved_senders IS NOT NULL AND saved_senders != '' "
                        "AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
                 c.execute(q(sql), (target_user_filter,))
             else:
                 sql = ("SELECT username, telegram_chat_id, saved_senders FROM users "
-                       "WHERE saved_senders IS NOT NULL AND saved_senders != '' "
+                       "WHERE allow_247 = 1 AND saved_senders IS NOT NULL AND saved_senders != '' "
                        "AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
                 c.execute(sql)
             db_users = c.fetchall()
@@ -686,6 +692,37 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
 # ══════════════════════════════════════════════════
 # AUTH ENDPOINTS
 # ══════════════════════════════════════════════════
+@app.route('/api/get-settings', methods=['GET'])
+def get_settings():
+    if 'username' not in session:
+        return jsonify({"error": "No autenticado"}), 401
+    
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute(q("SELECT allow_247 FROM users WHERE username = ?"), (session['username'],))
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        return jsonify({"allow_247": bool(row[0])})
+    return jsonify({"allow_247": False})
+
+@app.route('/api/update-settings', methods=['POST'])
+def update_settings():
+    if 'username' not in session:
+        return jsonify({"error": "No autenticado"}), 401
+    
+    data = request.json
+    allow = 1 if data.get('allow_247') else 0
+    
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute(q("UPDATE users SET allow_247 = ? WHERE username = ?"), (allow, session['username']))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"message": "Configuración guardada", "allow_247": bool(allow)})
+
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json
