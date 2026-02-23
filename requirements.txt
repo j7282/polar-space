@@ -4,3 +4,4 @@ werkzeug
 requests[socks]
 urllib3
 PySocks
+psycopg2-binary

@@ -21,26 +21,51 @@ import os
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__, static_folder='.', template_folder='.')
-app.secret_key = os.urandom(24)
+app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(24)
 audit_queues = {}
 
 DB_NAME = "database.db"
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+
+def get_db_conn():
+    """Returns a DB connection: PostgreSQL if DATABASE_URL is set, else SQLite."""
+    if DATABASE_URL:
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
+    return sqlite3.connect(DB_NAME)
+
+def q(sql):
+    """Adapt SQLite ? placeholders to PostgreSQL %s when needed."""
+    if DATABASE_URL:
+        return sql.replace("?", "%s")
+    return sql
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_conn()
     c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            telegram_chat_id TEXT
-        )
-    ''')
-    try:
-        c.execute('ALTER TABLE users ADD COLUMN saved_senders TEXT')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    if DATABASE_URL:
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                telegram_chat_id TEXT,
+                saved_senders TEXT
+            )
+        ''')
+    else:
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                telegram_chat_id TEXT
+            )
+        ''')
+        try:
+            c.execute('ALTER TABLE users ADD COLUMN saved_senders TEXT')
+        except Exception:
+            pass  # Column already exists
     conn.commit()
     conn.close()
 
@@ -381,9 +406,12 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
     if multi_user:
         # Fetch all users with saved senders and Telegram chat IDs
         try:
-            conn = sqlite3.connect(DB_NAME)
+            conn = get_db_conn()
             c = conn.cursor()
-            c.execute('SELECT username, telegram_chat_id, saved_senders FROM users WHERE saved_senders IS NOT NULL AND saved_senders != "" AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ""')
+            sql = ("SELECT username, telegram_chat_id, saved_senders FROM users "
+                   "WHERE saved_senders IS NOT NULL AND saved_senders != '' "
+                   "AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
+            c.execute(sql)
             db_users = c.fetchall()
             conn.close()
             
@@ -611,18 +639,24 @@ def register():
     if not username or not password:
         return jsonify({"error": "Usuario y contraseña son requeridos"}), 400
 
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_conn()
     c = conn.cursor()
-    c.execute('SELECT id FROM users WHERE username=?', (username,))
+    c.execute(q('SELECT id FROM users WHERE username=?'), (username,))
     if c.fetchone():
         conn.close()
-        return jsonify({"error": "El usuario ya existe"}), 400
+        return jsonify({"error": "El usuario ya existe, intenta con otro nombre"}), 400
 
     hashed_pw = generate_password_hash(password, method='pbkdf2:sha256')
-    c.execute('INSERT INTO users (username, password_hash, telegram_chat_id) VALUES (?, ?, ?)',
-              (username, hashed_pw, chat_id))
-    conn.commit()
-    conn.close()
+    try:
+        c.execute(q('INSERT INTO users (username, password_hash, telegram_chat_id) VALUES (?, ?, ?)'),
+                  (username, hashed_pw, chat_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        conn.close()
+        if "unique" in str(e).lower() or "UNIQUE" in str(e):
+            return jsonify({"error": "El usuario ya existe, intenta con otro nombre"}), 400
+        return jsonify({"error": f"Error de base de datos: {str(e)[:80]}"}), 500
     
     return jsonify({"success": "Usuario registrado exitosamente"})
 
@@ -632,9 +666,9 @@ def login():
     username = data.get('username', '').strip()
     password = data.get('password', '').strip()
 
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_conn()
     c = conn.cursor()
-    c.execute('SELECT id, password_hash, telegram_chat_id FROM users WHERE username=?', (username,))
+    c.execute(q('SELECT id, password_hash, telegram_chat_id FROM users WHERE username=?'), (username,))
     row = c.fetchone()
     conn.close()
 
@@ -656,9 +690,9 @@ def me():
     if 'user_id' not in session:
         return jsonify({"error": "No autorizado", "chat_id": "", "saved_senders": ""}), 401
     
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_conn()
     c = conn.cursor()
-    c.execute('SELECT telegram_chat_id, saved_senders FROM users WHERE id=?', (session['user_id'],))
+    c.execute(q('SELECT telegram_chat_id, saved_senders FROM users WHERE id=?'), (session['user_id'],))
     row = c.fetchone()
     conn.close()
 
@@ -672,9 +706,9 @@ def update_gate():
     data = request.json
     chat_id = data.get('chat_id', '').strip()
     
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_conn()
     c = conn.cursor()
-    c.execute('UPDATE users SET telegram_chat_id=? WHERE id=?', (chat_id, session['user_id']))
+    c.execute(q('UPDATE users SET telegram_chat_id=? WHERE id=?'), (chat_id, session['user_id']))
     conn.commit()
     conn.close()
     
@@ -688,9 +722,9 @@ def update_senders():
     data = request.json
     senders = data.get('senders', '').strip()
     
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_conn()
     c = conn.cursor()
-    c.execute('UPDATE users SET saved_senders=? WHERE id=?', (senders, session['user_id']))
+    c.execute(q('UPDATE users SET saved_senders=? WHERE id=?'), (senders, session['user_id']))
     conn.commit()
     conn.close()
     
@@ -726,6 +760,18 @@ def start_audit():
         return jsonify({"error": "Formato: correo@hotmail.com:contraseña"}), 400
 
     tg_chat_id = data.get('tgChatId', '').strip()
+    # Si no hay chat_id en el request, usar el del usuario logueado
+    if not tg_chat_id and 'user_id' in session:
+        try:
+            _conn = get_db_conn()
+            _c = _conn.cursor()
+            _c.execute(q('SELECT telegram_chat_id FROM users WHERE id=?'), (session['user_id'],))
+            _row = _c.fetchone()
+            _conn.close()
+            if _row and _row[0]:
+                tg_chat_id = _row[0]
+        except Exception:
+            pass
 
     proxies = load_proxies_from_text(proxies_text) if proxies_text else []
 
