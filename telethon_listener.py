@@ -168,10 +168,16 @@ async def main():
     print("  👁️  TELETHON USERBOT LISTENER                   ")
     print("══════════════════════════════════════════════════")
     
-    # Esto pedirá número de teléfono y código SMS automáticamente si no existe '.session'
-    await client.start()
+    # Conectar sin prompts interactivos (especial para Render/servidores headless)
+    await client.connect()
+    
+    if not await client.is_user_authorized():
+        print("❌ La sesión NO es válida o expiró.")
+        print("   Por favor vuelve a autenticarte localmente y actualiza SESSION_B64 en Render.")
+        sys.exit(1)
     
     print("\n✅ ¡Sesión iniciada correctamente!")
+
     
     global TARGET_GROUP, FILTER_KEYWORD
     
