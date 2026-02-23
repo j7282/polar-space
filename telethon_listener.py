@@ -339,18 +339,17 @@ async def main():
     # Read from ENV VARS if available (for Render deployment), else fall back to input()
     TARGET_GROUP = os.environ.get("TARGET_GROUP", "").strip()
     if not TARGET_GROUP:
-        TARGET_GROUP = input("2. Ingresa el Nombre/Link/ID del Grupo a monitorear: ").strip()
-    
+        print("❌ ERROR: No se ha definido 'TARGET_GROUP' en las variables de entorno.")
+        return
+
     # Extraer username si pusieron un link (ej. https://t.me/mi_grupo)
     if not TARGET_GROUP.replace('-','').isdigit():
         parsed = urlparse(TARGET_GROUP)
         if parsed.path and parsed.netloc:  # it's a real URL
             TARGET_GROUP = parsed.path.strip('/')
     
-    FILTER_KEYWORD = os.environ.get("FILTER_KEYWORD", "").strip()
-    if not FILTER_KEYWORD:
-        FILTER_KEYWORD = input("3. (Opcional) Ingresa palabra clave para filtrar archivos (ej. HOTMAIL HQ): ").strip()
-        
+    FILTER_KEYWORD = os.environ.get("FILTER_KEYWORD", "HOTMAIL HQ").strip()
+    
     print(f"\n📡 Escuchando 24/7 nuevos envíos .txt en: '{TARGET_GROUP}'")
     if FILTER_KEYWORD:
         print(f"🔍 FILTRO ACTIVO: Solo descargará archivos que digan '{FILTER_KEYWORD}'")
