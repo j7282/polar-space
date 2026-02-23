@@ -982,25 +982,6 @@
         <div class="main-grid">
             <!-- LEFT: Input Panel -->
             <div class="input-panel">
-                <!-- MASTER CONTROL CARD -->
-                <div class="card"
-                    style="border-color: var(--accent); background: linear-gradient(135deg, var(--bg-card), rgba(99, 102, 241, 0.05));">
-                    <div class="card-title" style="color: var(--accent);">🛡️ CONTROL MAESTRO</div>
-                    <div
-                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                        <span style="font-size: 13px; font-weight: 500;">Permitir Procesos 24/7</span>
-                        <label class="switch">
-                            <input type="checkbox" id="masterToggle" onchange="updateMasterPermission()">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div id="masterStatusText" class="master-control-status" style="color: var(--text-dim);">DESACTIVADO
-                    </div>
-                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 10px; line-height: 1.4;">
-                        ⚠️ Cuando está activo, autorizas al servidor a realizar auditorías automáticas y escaneos de
-                        historial sin tu presencia.
-                    </div>
-                </div>
 
                 <div class="card">
                     <div class="card-title">📧 Credenciales</div>
@@ -1621,61 +1602,8 @@
 
         setInterval(pollDeepScanStatus, 5000); // Polling cada 5s
 
-        // MASTER PERMISSION LOGIC
-        async function fetchSettings() {
-            try {
-                const res = await fetch('/api/get-settings');
-                const data = await res.json();
-                const toggle = document.getElementById('masterToggle');
-                const statusText = document.getElementById('masterStatusText');
-
-                if (data.allow_247) {
-                    toggle.checked = true;
-                    statusText.innerText = 'AUTORIZADO';
-                    statusText.style.color = 'var(--green)';
-                } else {
-                    toggle.checked = false;
-                    statusText.innerText = 'DESACTIVADO';
-                    statusText.style.color = 'var(--text-dim)';
-                }
-            } catch (e) {
-                console.error("Error fetching settings:", e);
-            }
-        }
-
-        async function updateMasterPermission() {
-            const toggle = document.getElementById('masterToggle');
-            const statusText = document.getElementById('masterStatusText');
-            const isAllowed = toggle.checked;
-
-            statusText.innerText = 'GUARDANDO...';
-            statusText.style.color = 'var(--yellow)';
-
-            try {
-                const res = await fetch('/api/update-settings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ allow_247: isAllowed })
-                });
-                const data = await res.json();
-
-                if (isAllowed) {
-                    statusText.innerText = 'AUTORIZADO';
-                    statusText.style.color = 'var(--green)';
-                    addLog('success', '🔐 PERMISO CONCEDIDO: El bot ahora puede trabajar 24/7 en el servidor.');
-                } else {
-                    statusText.innerText = 'DESACTIVADO';
-                    statusText.style.color = 'var(--text-dim)';
-                    addLog('warning', '🛑 PERMISO REVOCADO: Se han detenido los procesos de fondo.');
-                }
-            } catch (e) {
-                addLog('error', 'Error al guardar permiso maestro');
-            }
-        }
-
         window.addEventListener('load', () => {
             checkSession(); // Changed checkAuth to checkSession to match existing function
-            fetchSettings();
         });
 
         async function updateGate() {

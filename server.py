@@ -443,12 +443,12 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         try:
             if target_user_filter:
                 sql = ("SELECT username, telegram_chat_id, saved_senders FROM users "
-                       "WHERE username = ? AND allow_247 = 1 AND saved_senders IS NOT NULL AND saved_senders != '' "
+                       "WHERE username = ? AND saved_senders IS NOT NULL AND saved_senders != '' "
                        "AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
                 c.execute(q(sql), (target_user_filter,))
             else:
                 sql = ("SELECT username, telegram_chat_id, saved_senders FROM users "
-                       "WHERE allow_247 = 1 AND saved_senders IS NOT NULL AND saved_senders != '' "
+                       "WHERE saved_senders IS NOT NULL AND saved_senders != '' "
                        "AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
                 c.execute(sql)
             db_users = c.fetchall()
