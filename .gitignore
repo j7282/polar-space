@@ -1,0 +1,26 @@
+# Sesión de Telegram (archivo sensible - NO subir)
+*.session
+*.session-journal
+
+# Base de datos local
+database.db
+
+# Hits guardados localmente
+hits_encontrados.txt
+
+# Archivos descargados del grupo
+incoming_targets/
+
+# Logs
+*.log
+nohup.out
+telethon_answers.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# macOS
+.DS_Store
