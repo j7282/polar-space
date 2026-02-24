@@ -410,6 +410,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         "Accept": "application/json",
         "Authorization": f"Bearer {access_token}",
         "X-AnchorMailbox": f"CID:{cid}",
+        "Content-Type": "application/json"
     }
 
     name, country = "N/A", "N/A"
