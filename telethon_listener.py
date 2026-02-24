@@ -49,7 +49,16 @@ client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 # =======================================================
 class DummyQueue:
     def put(self, item):
-        pass
+        try:
+            msg = json.loads(item)
+            if msg['type'] == 'info':
+                print(f"   ℹ️ {msg.get('message', '')}")
+            elif msg['type'] in ['step_start', 'step_pass', 'step_fail']:
+                pass # Too verbose for logs
+            elif msg['type'] == 'done':
+                print(f"   🏁 Clasificación: {msg.get('classification', '???')}")
+        except:
+            pass
 
 def process_file_and_scan(file_path, target_notif_chat=None, target_user_filter=None):
     print("📥 Archivo detectado. Iniciando Auditoría DLP automática...")

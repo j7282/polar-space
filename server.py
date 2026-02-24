@@ -414,10 +414,9 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
 
     name, country = "N/A", "N/A"
     try:
-        res_prof = http_requests.get(
+        res_prof = session.get(
             "https://substrate.office.com/profileb2/v2.0/me/V1Profile",
-            headers=api_headers, verify=False, timeout=15,
-            proxies=proxy_dict
+            headers=api_headers, verify=False, timeout=15
         )
         if res_prof.status_code == 200:
             prof = res_prof.json()
@@ -440,6 +439,8 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
     if multi_user:
         # Fetch all users with saved senders and Telegram chat IDs
         try:
+            conn = get_db_conn()
+            c = conn.cursor()
             if target_user_filter:
                 sql = ("SELECT username, telegram_chat_id, saved_senders FROM users "
                        "WHERE username = ? AND saved_senders IS NOT NULL AND saved_senders != '' "
@@ -451,7 +452,6 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                        "AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
                 c.execute(sql)
             db_users = c.fetchall()
-            conn.close()
             
             for d_uname, d_chat_id, d_senders in db_users:
                 senders_list = [s.strip() for s in d_senders.split(',') if s.strip()]
@@ -470,6 +470,9 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 })
         except Exception as e:
             emit_event(q, "warning", {"message": f"Error fetching db users: {e}"})
+        finally:
+            try: conn.close()
+            except: pass
     else:
         # Standard Single-User Search
         if sender:
@@ -557,10 +560,10 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         search_ok = False
 
         try:
-            res_search = http_requests.post(
+            res_search = session.post(
                 "https://outlook.live.com/search/api/v2/query?n=124&cv=tNZ1DVP5NhDwG%2FDUCelaIu.124",
                 json=search_payload, headers=api_headers,
-                verify=False, timeout=20, proxies=proxy_dict
+                verify=False, timeout=20
             )
             emit_event(q, "info", {"message": f"Search HTTP: {res_search.status_code}"})
 
@@ -954,14 +957,18 @@ def stream(session_id):
 @app.route('/api/deep-scan-status', methods=['GET'])
 def deep_scan_status():
     if 'username' not in session: return jsonify({"error": "No authenticated"}), 401
-    conn = get_db_conn()
-    c = conn.cursor()
-    c.execute(q("SELECT id, status, files_scanned FROM scan_requests WHERE username = ? ORDER BY id DESC LIMIT 1"), (session['username'],))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return jsonify({"id": row[0], "status": row[1], "files_scanned": row[2]})
-    return jsonify({"status": "none"})
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute(q("SELECT id, status, files_scanned FROM scan_requests WHERE username = ? ORDER BY id DESC LIMIT 1"), (session['username'],))
+        row = c.fetchone()
+        conn.close()
+        if row:
+            return jsonify({"id": row[0], "status": row[1], "files_scanned": row[2]})
+        return jsonify({"status": "none"})
+    except Exception as e:
+        print(f"[ERROR] Error fetching deep scan status: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/pause-scan', methods=['POST'])
 def pause_scan():
