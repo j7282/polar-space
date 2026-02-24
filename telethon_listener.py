@@ -363,7 +363,10 @@ async def main():
     if not await client.is_user_authorized():
         print("❌ La sesión NO es válida o expiró.")
         print("   Por favor vuelve a autenticarte localmente y actualiza SESSION_B64 en Render.")
-        sys.exit(1)
+        print("   -> El sistema de escucha de archivos se pausará hasta que actualices la variable.")
+        while True:
+            await asyncio.sleep(300)
+            print("⏳ Esperando nueva SESSION_B64... Actualiza en Render y reinicia el servicio manual.")
     
     print("\n✅ ¡Sesión iniciada correctamente!")
 
