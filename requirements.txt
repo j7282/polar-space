@@ -3,4 +3,3 @@ gunicorn
 psycopg2-binary
 requests
 telethon
-PySocks
