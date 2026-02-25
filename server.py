@@ -693,10 +693,13 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
 "
                               f"🤖 *DLP Audit Pro System*")
                     tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-                    http_requests.post(tg_url, json={"chat_id": chat_id, "text": tg_msg, "parse_mode": "Markdown"}, timeout=5)
+                    res = http_requests.post(tg_url, json={"chat_id": chat_id, "text": tg_msg, "parse_mode": "Markdown"}, timeout=5)
+                    res.raise_for_status()
                     emit_event(q, "info", {"message": f"✅ Alerta enviada a Telegram de {uname}"})
                 except Exception as e:
-                    emit_event(q, "warning", {"message": f"⚠️ Error enviando a Telegram: {str(e)[:50]}"})
+                    err_txt = getattr(e, 'response', None)
+                    err_msg = err_txt.text if err_txt else str(e)
+                    emit_event(q, "warning", {"message": f"⚠️ Error enviando a Telegram: {err_msg[:100]}"})
 
     for search_task in searches_to_run:
         target_username = search_task["username"]

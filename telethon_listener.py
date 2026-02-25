@@ -161,14 +161,18 @@ def send_consolidated_report(hits):
     for cid in target_chats:
         try:
             # Send message
-            requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+            res_msg = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
                           json={"chat_id": cid, "text": "\n".join(summary_lines), "parse_mode": "Markdown"})
+            res_msg.raise_for_status()
             
             # Send file
             with open(report_path, "rb") as f:
-                requests.post(f"https://api.telegram.org/bot{token}/sendDocument",
+                res_doc = requests.post(f"https://api.telegram.org/bot{token}/sendDocument",
                               data={"chat_id": cid},
                               files={"document": f})
+                res_doc.raise_for_status()
+        except requests.exceptions.HTTPError as he:
+            print(f"❌ Error HTTP de Telegram: {he.response.text}")
         except Exception as e:
             print(f"Error enviando reporte bot: {e}")
 
