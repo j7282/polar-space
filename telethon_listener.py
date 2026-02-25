@@ -316,7 +316,8 @@ async def handler(event):
         chat_id_or_title = str(chat.id)
 
     # Check if this chat matches the user's TARGET_GROUP string
-    if TARGET_GROUP not in [str(chat.id), chat_id_or_title, getattr(chat, 'username', '')]:
+    chat_username_lower = getattr(chat, 'username', '').lower() if getattr(chat, 'username', '') else ""
+    if TARGET_GROUP.lower() not in chat_id_or_title.lower() and TARGET_GROUP.lower() not in chat_username_lower and TARGET_GROUP != str(chat.id):
         return
 
     # Filter Keyword Check
