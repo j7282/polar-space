@@ -1605,6 +1605,7 @@
             const rBtn = document.getElementById('btnResumeScan');
 
             count.innerText = data.files_scanned || 0;
+            if (!data.status) return;
             badge.innerText = data.status.toUpperCase();
 
             if (data.status === 'processing') {
@@ -1660,7 +1661,11 @@
         }
 
         async function updateSenders() {
-            const senders = document.getElementById('senderInput').value.trim();
+            // First run addSenderTag in case they typed something but didn't press enter/plus
+            addSenderTag();
+            
+            // Send the entire array joined by commas, not just the currently empty text box
+            const senders = savedSendersList.join(',');
             try {
                 const res = await fetch('/api/update_senders', {
                     method: 'POST',
