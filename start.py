@@ -5,13 +5,13 @@ import time
 
 def run_flask():
     print("▶ Iniciando Servidor Web (Dashboard)...")
-    os.system("python server.py")
+    os.system(f"{sys.executable} server.py")
 
 def run_telethon():
     print("▶ Iniciando Escáner 24/7 de Telegram (background)...")
     # Small delay to let Flask bind the port first
     time.sleep(3)
-    os.system("python telethon_listener.py")
+    os.system(f"{sys.executable} telethon_listener.py")
 
 if __name__ == "__main__":
     print("==================================================")
