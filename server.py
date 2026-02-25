@@ -966,11 +966,13 @@ def stream(session_id):
             return
         while True:
             try:
-                d = q.get(timeout=120)
+                # Render has a 100s idle timeout. We wake up every 15s to send a heartbeat.
+                d = q.get(timeout=15)
                 yield f"data: {d}\n\n"
                 if json.loads(d).get('type') == 'all_done':
                     break
             except queue.Empty:
+                # Send a comment/heartbeat to keep the HTTP connection alive
                 yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
 
     return Response(event_stream(), mimetype='text/event-stream',
