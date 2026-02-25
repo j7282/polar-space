@@ -2,25 +2,29 @@ import os
 import sys
 import threading
 import time
+import subprocess
 
 def run_flask():
-    print("▶ Iniciando Servidor Web (Dashboard)...")
-    os.system(f"{sys.executable} server.py")
+    print("▶ Iniciando Servidor Web (Dashboard)...", flush=True)
+    try:
+        subprocess.run([sys.executable, "server.py"], check=True)
+    except Exception as e:
+        print(f"❌ CRÍTICO: server.py falló con error: {e}", flush=True)
 
 def run_telethon():
-    print("▶ Iniciando Escáner 24/7 de Telegram (background)...")
-    # Small delay to let Flask bind the port first
+    print("▶ Iniciando Escáner 24/7 de Telegram (background)...", flush=True)
     time.sleep(3)
-    os.system(f"{sys.executable} telethon_listener.py")
+    try:
+        subprocess.run([sys.executable, "telethon_listener.py"], check=True)
+    except Exception as e:
+        print(f"❌ CRÍTICO: telethon_listener.py falló con error: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("==================================================")
-    print("  🚀 ARRANCANDO SISTEMA DUAL EN RENDER")
-    print("==================================================")
+    print("==================================================", flush=True)
+    print("  🚀 ARRANCANDO SISTEMA DUAL EN RENDER", flush=True)
+    print("==================================================", flush=True)
     
-    # Run Telethon in a background thread
     t = threading.Thread(target=run_telethon, daemon=True)
     t.start()
     
-    # Run Flask in the main thread so Render knows the service is up (port binding)
     run_flask()

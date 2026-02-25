@@ -42,68 +42,61 @@ def q(sql):
     return sql
 
 def init_db():
-    conn = get_db_conn()
-    c = conn.cursor()
-    if DATABASE_URL:
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                telegram_chat_id TEXT,
-                saved_senders TEXT,
-                allow_247 INTEGER DEFAULT 0
-            )
-        ''')
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS scan_requests (
-                id SERIAL PRIMARY KEY,
-                username TEXT NOT NULL,
-                status TEXT DEFAULT 'pending',
-                last_msg_id BIGINT,
-                files_scanned INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-    else:
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                telegram_chat_id TEXT,
-                saved_senders TEXT,
-                allow_247 INTEGER DEFAULT 0
-            )
-        ''')
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS scan_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                status TEXT DEFAULT 'pending',
-                last_msg_id INTEGER,
-                files_scanned INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        try:
-            c.execute('ALTER TABLE users ADD COLUMN saved_senders TEXT')
-        except Exception:
-            pass
-        try:
-            c.execute('ALTER TABLE users ADD COLUMN allow_247 INTEGER DEFAULT 0')
-        except Exception:
-            pass
-        try:
-            c.execute('ALTER TABLE scan_requests ADD COLUMN last_msg_id BIGINT')
-        except Exception:
-            pass
-        try:
-            c.execute('ALTER TABLE scan_requests ADD COLUMN files_scanned INTEGER DEFAULT 0')
-        except Exception:
-            pass
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        if DATABASE_URL:
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    telegram_chat_id TEXT,
+                    saved_senders TEXT,
+                    allow_247 INTEGER DEFAULT 0
+                )
+            ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS scan_requests (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    last_msg_id BIGINT,
+                    files_scanned INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        else:
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    telegram_chat_id TEXT,
+                    saved_senders TEXT,
+                    allow_247 INTEGER DEFAULT 0
+                )
+            ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS scan_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    last_msg_id INTEGER,
+                    files_scanned INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            for col, dtype in [('saved_senders', 'TEXT'), ('allow_247', 'INTEGER DEFAULT 0')]:
+                try: c.execute(f'ALTER TABLE users ADD COLUMN {col} {dtype}')
+                except Exception: pass
+            for col, dtype in [('last_msg_id', 'BIGINT'), ('files_scanned', 'INTEGER DEFAULT 0')]:
+                try: c.execute(f'ALTER TABLE scan_requests ADD COLUMN {col} {dtype}')
+                except Exception: pass
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"❌ CRÍTICO: Fallo al inicializar la base de datos: {e}", flush=True)
 
 init_db()
 
