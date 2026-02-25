@@ -829,6 +829,15 @@ def me():
 
     return jsonify({"username": session['username'], "chat_id": row[0] or "", "saved_senders": row[1] or ""})
 
+@app.route('/api/debug-db')
+def debug_db():
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute("SELECT username, telegram_chat_id, saved_senders FROM users")
+    data = c.fetchall()
+    conn.close()
+    return jsonify({"data": data})
+
 @app.route('/api/update_gate', methods=['POST'])
 def update_gate():
     if 'user_id' not in session:
