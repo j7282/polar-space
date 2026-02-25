@@ -1044,8 +1044,9 @@ def trigger_deep_scan():
 
 
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5050))
     print("\n╔══════════════════════════════════════════════════╗")
     print("║  🔍 DLP AUDIT DASHBOARD                        ║")
-    print("║  Abre http://localhost:5050 en tu navegador     ║")
+    print(f"║  Abriendo servidor en el puerto {port}         ║")
     print("╚══════════════════════════════════════════════════╝\n")
-    app.run(host='0.0.0.0', port=5050, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
