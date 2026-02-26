@@ -52,8 +52,8 @@ client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 # =======================================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDqns01kwTrg6pIIbD6n_S0WKaXrrvt9vk")
 genai.configure(api_key=GEMINI_API_KEY)
-# We use gemini-1.5-flash which is fast and very cheap for text processing
-gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+# We use gemini-2.0-flash which is fast and very cheap for text processing
+gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
 def extract_with_gemini(raw_text):
     print("🤖 Iniciando Motor Secundario: Gemini AI Parser...")
