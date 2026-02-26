@@ -87,12 +87,16 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            for col, dtype in [('saved_senders', 'TEXT'), ('allow_247', 'INTEGER DEFAULT 0')]:
-                try: c.execute(f'ALTER TABLE users ADD COLUMN {col} {dtype}')
-                except Exception: pass
-            for col, dtype in [('last_msg_id', 'BIGINT'), ('files_scanned', 'INTEGER DEFAULT 0')]:
-                try: c.execute(f'ALTER TABLE scan_requests ADD COLUMN {col} {dtype}')
-                except Exception: pass
+            
+        # Ejecutar migraciones ALTER TABLE para SQLite y PostgreSQL
+        for col, dtype in [('telegram_chat_id', 'TEXT'), ('saved_senders', 'TEXT'), ('allow_247', 'INTEGER DEFAULT 0')]:
+            try: c.execute(f'ALTER TABLE users ADD COLUMN {col} {dtype}')
+            except Exception: pass
+            
+        for col, dtype in [('last_msg_id', 'BIGINT'), ('files_scanned', 'INTEGER DEFAULT 0')]:
+            try: c.execute(f'ALTER TABLE scan_requests ADD COLUMN {col} {dtype}')
+            except Exception: pass
+            
         conn.commit()
         conn.close()
     except Exception as e:
