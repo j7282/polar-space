@@ -1050,7 +1050,9 @@ def start_telethon_bot():
     import subprocess
     import sys
     try:
-        subprocess.run([sys.executable, "telethon_listener.py"], check=False)
+        # Usar Popen para que no bloquee ni tire error fatal al worker maestro de Gunicorn
+        subprocess.Popen([sys.executable, "telethon_listener.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("✅ [DAEMON] Telethon despachado en subproceso fantasma", flush=True)
     except Exception as e:
         print(f"❌ Error arrancando telethon desde server: {e}")
 
