@@ -1047,6 +1047,7 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))
     print("\n╔══════════════════════════════════════════════════╗")
     print("║  🔍 DLP AUDIT DASHBOARD                        ║")
-    print(f"║  Abriendo servidor en el puerto {port}         ║")
+    print(f"║  🚀 WAITRESS PRODUCTION SERVER: PUERTO {port} ║")
     print("╚══════════════════════════════════════════════════╝\n")
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+    from waitress import serve
+    serve(app, host='0.0.0.0', port=port, threads=8)
