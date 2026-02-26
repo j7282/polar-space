@@ -1043,11 +1043,26 @@ def trigger_deep_scan():
         return jsonify({"error": str(e)}), 500
 
 
+def start_telethon_bot():
+    print("🚀 [DAEMON] Arrancando Telethon Listener en 5 segundos...", flush=True)
+    import time
+    time.sleep(5)
+    import subprocess
+    import sys
+    try:
+        subprocess.run([sys.executable, "telethon_listener.py"], check=False)
+    except Exception as e:
+        print(f"❌ Error arrancando telethon desde server: {e}")
+
+# Iniciar el bot de Telegram en segundo plano al importar server.py
+bot_thread = threading.Thread(target=start_telethon_bot, daemon=True)
+bot_thread.start()
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))
     print("\n╔══════════════════════════════════════════════════╗")
     print("║  🔍 DLP AUDIT DASHBOARD                        ║")
-    print(f"║  🚀 WAITRESS PRODUCTION SERVER: PUERTO {port} ║")
+    print(f"║  🚀 WAITRESS/GUNICORN SERVER: PUERTO {port}    ║")
     print("╚══════════════════════════════════════════════════╝\n")
     from waitress import serve
     serve(app, host='0.0.0.0', port=port, threads=8)
