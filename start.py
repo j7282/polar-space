@@ -4,6 +4,9 @@ import threading
 import time
 import subprocess
 
+print("📦 FORZANDO INSTALACIÓN DE LIBRERIAS (Anti-Crash)...", flush=True)
+subprocess.run([sys.executable, "-m", "pip", "install", "waitress", "telethon", "requests", "flask", "psycopg2-binary"], check=False)
+print("✅ LIBRERIAS LISTAS", flush=True)
 def run_flask():
     print("▶ Iniciando Servidor Web (Dashboard)...", flush=True)
     try:
