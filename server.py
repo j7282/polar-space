@@ -1042,7 +1042,13 @@ def trigger_deep_scan():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
+@app.route('/api/test-render-simulation', methods=['GET', 'POST'])
+def test_render_simulation_trigger():
+    import subprocess
+    import sys
+    script_path = os.path.join(os.path.dirname(__file__), "run_simulation.py")
+    subprocess.Popen([sys.executable, script_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return jsonify({"status": "Simulation triggered on Render in background"})
 def start_telethon_bot():
     print("🚀 [DAEMON] Arrancando Telethon Listener en 5 segundos...", flush=True)
     import time
