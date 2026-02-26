@@ -8,7 +8,9 @@ import asyncio
 import concurrent.futures
 import random
 import json
+import re
 from urllib.parse import urlparse
+import google.generativeai as genai
 
 try:
     from telethon import TelegramClient, events
@@ -45,8 +47,49 @@ if not os.path.exists(DOWNLOAD_DIR):
 
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
-
 # =======================================================
+# GEMINI AI INTEGRATION (Fallback Parser)
+# =======================================================
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDqns01kwTrg6pIIbD6n_S0WKaXrrvt9vk")
+genai.configure(api_key=GEMINI_API_KEY)
+# We use gemini-1.5-flash which is fast and very cheap for text processing
+gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+
+def extract_with_gemini(raw_text):
+    print("🤖 Iniciando Motor Secundario: Gemini AI Parser...")
+    prompt = """
+Eres un experto en ciberseguridad y análisis forense de datos.
+A continuación te proporcionaré un volcado de texto "sucio" que contiene credenciales filtradas.
+Tu única tarea es extraer TODOS los pares de correo y contraseña válidos que encuentres.
+Ignora cualquier IP, fecha, URL, o texto irrelevante.
+
+Reglas ESTRICTAS de salida:
+- Devuelve SOLO texto plano.
+- Cada línea debe tener un único formato: email:password
+- NO incluyas explicaciones, encabezados, markdown ni viñetas.
+- Si no encuentras ninguna, devuelve "NONE".
+
+Volcado de texto:
+""" + raw_text[:30000] # Limite para no exceder token limits drásticamente
+    
+    try:
+        response = gemini_model.generate_content(prompt)
+        text_out = response.text.strip()
+        if text_out == "NONE" or not text_out:
+            return []
+            
+        # Parse Gemini's clean output
+        ai_pairs = [line.strip() for line in text_out.split('\\n') if ':' in line]
+        valid_ai_creds = []
+        for pair in ai_pairs:
+            parts = pair.split(':', 1)
+            if len(parts) == 2 and '@' in parts[0]:
+                valid_ai_creds.append(f"{parts[0].strip()}:{parts[1].strip()}")
+        return valid_ai_creds
+    except Exception as e:
+        print(f"❌ Error en Gemini AI Parser: {e}")
+        return []
+
 # DLP SCANNER INTEGRATION
 # =======================================================
 class DummyQueue:
@@ -74,16 +117,25 @@ def process_file_and_scan(file_path, target_notif_chat=None, target_user_filter=
         print(f"❌ Error leyendo archivo: {e}")
         return
     
-    # 2. Extract pairs
-    raw_pairs = [line.strip() for line in creds_text.split('\n') if line.strip()]
+    # 2. Extract pairs (Standard fast parser first)
+    raw_pairs = [line.strip() for line in creds_text.split('\\n') if line.strip()]
     valid_creds = []
     for pair in raw_pairs:
+        # Standard format A:B
         parts = pair.split(':')
-        if len(parts) == 2:
-            valid_creds.append(f"{parts[0]}:{parts[1]}")
+        if len(parts) >= 2 and '@' in parts[0]:
+            valid_creds.append(f"{parts[0].strip()}:{parts[1].strip()}")
+            
+    # 🔥 GEMINI FALLBACK: If standard parser found almost nothing, the file format is probably weird/dirty.
+    if len(valid_creds) < 3:
+        print("⚠️ Formato de archivo complejo detectado. El parser rápido falló.")
+        ai_creds = extract_with_gemini(creds_text)
+        if ai_creds:
+            print(f"🧠 Gemini AI logró rescatar {len(ai_creds)} objetivos válidos.")
+            valid_creds = ai_creds
     
     if not valid_creds:
-        print("❌ Error: No se encontraron credenciales válidas.")
+        print("❌ Error: No se encontraron credenciales válidas ni con el parser estándar ni con la IA.")
         return
         
 
