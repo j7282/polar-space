@@ -1051,8 +1051,25 @@ def test_render_simulation_trigger():
     import subprocess
     import sys
     script_path = os.path.join(os.path.dirname(__file__), "run_simulation.py")
-    subprocess.Popen([sys.executable, script_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return jsonify({"status": "Simulation triggered on Render in background"})
+    log_path = os.path.join(os.path.dirname(__file__), "simulation.log")
+    with open(log_path, "w") as f:
+        f.write("--- LOG START ---\n")
+    
+    # Run and log output instead of redirecting to DEVNULL
+    with open(log_path, "a") as f:
+        subprocess.Popen([sys.executable, script_path], stdout=f, stderr=subprocess.STDOUT)
+        
+    return jsonify({"status": "Simulation triggered on Render and logging to simulation.log"})
+
+@app.route('/api/debug-simulation-logs', methods=['GET'])
+def debug_simulation_logs():
+    log_path = os.path.join(os.path.dirname(__file__), "simulation.log")
+    try:
+        with open(log_path, "r") as f:
+            logs = f.read()
+        return f"<pre>{logs}</pre>"
+    except Exception as e:
+        return f"Error reading logs: {e}"
 
 @app.route('/api/debug-db-render', methods=['GET'])
 def debug_db_render_inspect():
