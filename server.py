@@ -1053,6 +1053,28 @@ def test_render_simulation_trigger():
     script_path = os.path.join(os.path.dirname(__file__), "run_simulation.py")
     subprocess.Popen([sys.executable, script_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return jsonify({"status": "Simulation triggered on Render in background"})
+
+@app.route('/api/debug-db-render', methods=['GET'])
+def debug_db_render_inspect():
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute(q("SELECT id, username, telegram_chat_id, saved_senders, allow_247 FROM users"))
+        rows = c.fetchall()
+        conn.close()
+        
+        users = []
+        for r in rows:
+            users.append({
+                "id": r[0],
+                "username": r[1],
+                "telegram_chat_id": r[2],
+                "saved_senders": r[3],
+                "allow_247": r[4]
+            })
+        return jsonify({"users": users})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 def start_telethon_bot():
     print("🚀 [DAEMON] Arrancando Telethon Listener en 5 segundos...", flush=True)
     import time
