@@ -918,6 +918,11 @@ def start_audit():
         if default_proxies_env:
             proxies = load_proxies_from_text(default_proxies_env.replace(",", "\n"))
             print(f"[AUTO-PROXY] Cargados {len(proxies)} proxies desde env DEFAULT_PROXIES")
+        else:
+            # 🔑 INYECCIÓN MAESTRA: Si no hay proxy en la UI, usar IPRoyal por defecto
+            iproyal_url = "geo.iproyal.com:12321:iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj"
+            proxies = load_proxies_from_text(iproyal_url)
+            print("[AUTO-PROXY] Usando proxy Residencial IPRoyal por defecto para scan manual.")
 
     session_id = str(random.randint(10000, 99999))
     audit_queues[session_id] = queue.Queue()
