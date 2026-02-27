@@ -175,9 +175,15 @@ def process_file_and_scan(file_path, target_notif_chat=None, target_user_filter=
     
     def scan_cred(cred):
         email, pwd = cred.split(':', 1)
+        # 🔑 INYECCIÓN MAESTRA: Proxy Residencial Robusto IPRoyal
+        iproyal_auth = {
+            "http": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321",
+            "https": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321"
+        }
+        
         try:
-            # We pass multi_user=True, the hit_buffer and the user filter
-            run_audit(dummy_q, email.strip(), pwd.strip(), multi_user=True, hit_buffer=hits_buffer, target_user_filter=target_user_filter)
+            # We pass multi_user=True, the hit_buffer, user filter, AND THE PROXY
+            run_audit(dummy_q, email.strip(), pwd.strip(), proxy_dict=iproyal_auth, multi_user=True, hit_buffer=hits_buffer, target_user_filter=target_user_filter)
         except Exception as e:
             print(f"Error scanning {email}: {e}")
         
