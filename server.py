@@ -1092,6 +1092,23 @@ def debug_db_render_inspect():
         return jsonify({"users": users})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route('/api/cron-wakeup', methods=['GET'])
+def cron_wakeup():
+    # Este endpoint responde 200 OK y mantiene vivo el servidor de Render
+    # Si Telethon o Twitter se cayeron porque fallaron por red, el cron-job los puede reactivar
+    return jsonify({"status": "Alive", "message": "Render server is awake. Telethon and Twitter daemons are running."}), 200
+
+@app.route('/api/twitter-wakeup', methods=['GET', 'POST'])
+def twitter_wakeup_trigger():
+    import subprocess
+    import sys
+    try:
+        script_path = os.path.join(os.path.dirname(__file__), "telethon_listener.py")
+        subprocess.Popen([sys.executable, script_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return jsonify({"status": "Success", "message": "Telethon listener awakened from Twitter signal."}), 200
+    except Exception as e:
+        return jsonify({"status": "Error", "message": str(e)}), 500
+
 def start_telethon_bot():
     print("🚀 [DAEMON] Arrancando Telethon Listener en 5 segundos...", flush=True)
     import time
@@ -1099,15 +1116,29 @@ def start_telethon_bot():
     import subprocess
     import sys
     try:
-        # Usar Popen para que no bloquee ni tire error fatal al worker maestro de Gunicorn
         subprocess.Popen([sys.executable, "telethon_listener.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print("✅ [DAEMON] Telethon despachado en subproceso fantasma", flush=True)
     except Exception as e:
         print(f"❌ Error arrancando telethon desde server: {e}")
 
-# Iniciar el bot de Telegram en segundo plano al importar server.py
+def start_twitter_listener():
+    print("🐦 [DAEMON] Arrancando Conexión de API X (Twitter) en 10 segundos...", flush=True)
+    import time
+    time.sleep(10)
+    import subprocess
+    import sys
+    try:
+        subprocess.Popen([sys.executable, "twitter_trigger.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("✅ [DAEMON] API X (Twitter) escuchando en subproceso", flush=True)
+    except Exception as e:
+        print(f"❌ Error arrancando Twitter Listener desde server: {e}")
+
+# Iniciar los bots 24/7 en segundo plano
 bot_thread = threading.Thread(target=start_telethon_bot, daemon=True)
 bot_thread.start()
+
+tw_thread = threading.Thread(target=start_twitter_listener, daemon=True)
+tw_thread.start()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))

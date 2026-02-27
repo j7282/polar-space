@@ -5,3 +5,5 @@ requests
 telethon
 gunicorn
 google-generativeai
+tweepy
+PySocks
