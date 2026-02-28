@@ -11,6 +11,10 @@ import json
 import re
 from urllib.parse import urlparse
 import google.generativeai as genai
+try:
+    from groq import Groq
+except ImportError:
+    Groq = None
 
 try:
     from telethon import TelegramClient, events
@@ -48,12 +52,56 @@ if not os.path.exists(DOWNLOAD_DIR):
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
 # =======================================================
-# GEMINI AI INTEGRATION (Fallback Parser)
+# GROQ AI ENGINE (Primary Fast-Parser) & GEMINI (Fallback)
 # =======================================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDqns01kwTrg6pIIbD6n_S0WKaXrrvt9vk")
 genai.configure(api_key=GEMINI_API_KEY)
-# We use gemini-2.0-flash which is fast and very cheap for text processing
 gemini_model = genai.GenerativeModel('gemini-2.0-flash')
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+def extract_with_groq(raw_text):
+    if not Groq or not GROQ_API_KEY:
+        print("⚠️ Groq CLI no configurado o sin API Key. Saltando motor 4...")
+        return []
+    
+    print("⚡ Iniciando Motor 4: Groq AI Fast-Parser (Llama-3)...")
+    prompt = """
+Eres un experto en ciberseguridad y análisis forense de datos.
+A continuación te proporcionaré un volcado de texto "sucio" que contiene credenciales filtradas.
+Tu única tarea es extraer TODOS los pares de correo y contraseña válidos que encuentres.
+Ignora cualquier IP, fecha, URL, o texto irrelevante.
+
+Reglas ESTRICTAS de salida:
+- Devuelve SOLO texto plano.
+- Cada línea debe tener un único formato: email:password
+- NO incluyas explicaciones, encabezados, markdown ni viñetas.
+- Si no encuentras ninguna, devuelve "NONE".
+
+Volcado de texto:
+""" + raw_text[:30000]
+
+    try:
+        client = Groq(api_key=GROQ_API_KEY)
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama3-8b-8192",
+            temperature=0,
+            max_tokens=4000
+        )
+        text_out = chat_completion.choices[0].message.content.strip()
+        if text_out == "NONE" or not text_out:
+            return []
+            
+        ai_pairs = [line.strip() for line in text_out.split('\n') if ':' in line]
+        valid_ai_creds = []
+        for pair in ai_pairs:
+            parts = pair.split(':', 1)
+            if len(parts) == 2 and '@' in parts[0]:
+                valid_ai_creds.append(f"{parts[0].strip()}:{parts[1].strip()}")
+        return valid_ai_creds
+    except Exception as e:
+        print(f"❌ Error en Groq AI Parser: {e}")
+        return []
 
 def extract_with_gemini(raw_text):
     print("🤖 Iniciando Motor Secundario: Gemini AI Parser...")
@@ -126,12 +174,17 @@ def process_file_and_scan(file_path, target_notif_chat=None, target_user_filter=
         if len(parts) >= 2 and '@' in parts[0]:
             valid_creds.append(f"{parts[0].strip()}:{parts[1].strip()}")
             
-    # 🔥 GEMINI FALLBACK: If standard parser found almost nothing, the file format is probably weird/dirty.
+    # 🔥 AI FALLBACK SYSTEM: Groq -> Gemini
     if len(valid_creds) < 3:
         print("⚠️ Formato de archivo complejo detectado. El parser rápido falló.")
-        ai_creds = extract_with_gemini(creds_text)
+        ai_creds = extract_with_groq(creds_text)
+        
+        if not ai_creds:
+            print("🔄 Cayendo al Motor de Respaldo Definitivo (Gemini)...")
+            ai_creds = extract_with_gemini(creds_text)
+            
         if ai_creds:
-            print(f"🧠 Gemini AI logró rescatar {len(ai_creds)} objetivos válidos.")
+            print(f"🧠 Motor AI logró rescatar {len(ai_creds)} objetivos válidos.")
             valid_creds = ai_creds
     
     if not valid_creds:
