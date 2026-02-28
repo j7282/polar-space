@@ -856,12 +856,45 @@ def me():
 
 @app.route('/api/debug-db')
 def debug_db():
-    conn = get_db_conn()
-    c = conn.cursor()
-    c.execute("SELECT username, telegram_chat_id, saved_senders FROM users")
-    data = c.fetchall()
-    conn.close()
-    return jsonify({"data": data})
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT username, telegram_chat_id, saved_senders FROM users")
+        data = c.fetchall()
+        conn.close()
+        return jsonify({"data": data, "status": "ok"})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()})
+
+@app.route('/api/test-db')
+def test_db():
+    log = []
+    try:
+        log.append("Attempting import psycopg2")
+        import psycopg2
+        log.append("Imported psycopg2 successfully")
+        
+        url = os.environ.get("DATABASE_URL")
+        log.append(f"DB URL Set: {bool(url)}")
+        
+        conn = psycopg2.connect(url, connect_timeout=5)
+        log.append("Connected to DB successfully")
+        
+        c = conn.cursor()
+        c.execute("SELECT current_database();")
+        db_name = c.fetchone()[0]
+        log.append(f"DB Name queried: {db_name}")
+        
+        c.execute("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public';")
+        tables = [r[0] for r in c.fetchall()]
+        log.append(f"Tables found: {tables}")
+        
+        conn.close()
+        return jsonify({"success": True, "log": log})
+    except Exception as e:
+        import traceback
+        return jsonify({"success": False, "log": log, "error": str(e), "trace": traceback.format_exc()})
 
 @app.route('/api/update_gate', methods=['POST'])
 def update_gate():
