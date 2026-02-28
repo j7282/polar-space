@@ -29,10 +29,16 @@ DB_NAME = "database.db"
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 def get_db_conn():
-    """Returns a DB connection: PostgreSQL if DATABASE_URL is set, else SQLite."""
+    """Returns a DB connection: PostgreSQL if DATABASE_URL is set and reachable, else SQLite."""
+    global DATABASE_URL
     if DATABASE_URL:
-        import psycopg2
-        return psycopg2.connect(DATABASE_URL)
+        try:
+            import psycopg2
+            return psycopg2.connect(DATABASE_URL, connect_timeout=3)
+        except Exception as e:
+            print(f"⚠️ Alerta PostgreSQL: No se pudo conectar a DATABASE_URL. Cayendo a SQLite local. Error: {e}", flush=True)
+            DATABASE_URL = ""  # Force fallback for subsequent calls in this thread
+            
     return sqlite3.connect(DB_NAME)
 
 def q(sql):
