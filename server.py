@@ -23,7 +23,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__, static_folder='.', template_folder='.')
 app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(24)
-CORS(app)
 
 @app.errorhandler(Exception)
 def handle_exception(e):
