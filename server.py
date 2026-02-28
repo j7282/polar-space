@@ -100,7 +100,13 @@ def init_db():
                 )
             ''')
             
-        # Ejecutar migraciones ALTER TABLE para SQLite y PostgreSQL
+        if DATABASE_URL:
+            # PostgreSQL already has the columns in the CREATE statements, so skip ALTER
+            conn.commit()
+            conn.close()
+            return
+            
+        # Ejecutar migraciones ALTER TABLE para SQLite local antiguo
         for col, dtype in [('telegram_chat_id', 'TEXT'), ('saved_senders', 'TEXT'), ('allow_247', 'INTEGER DEFAULT 0')]:
             try: c.execute(f'ALTER TABLE users ADD COLUMN {col} {dtype}')
             except Exception: pass
