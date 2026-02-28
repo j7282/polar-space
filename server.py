@@ -17,11 +17,18 @@ import urllib3
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import traceback
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__, static_folder='.', template_folder='.')
 app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(24)
+CORS(app)
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    return jsonify({"error": "Crash Crítico", "trace": traceback.format_exc()}), 500
+
 audit_queues = {}
 stop_flags = {} # Track stop signal for manual audits
 
