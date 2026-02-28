@@ -40,7 +40,7 @@ def get_db_conn():
     if DATABASE_URL:
         try:
             import psycopg2
-            return psycopg2.connect(DATABASE_URL, connect_timeout=3)
+            return psycopg2.connect(DATABASE_URL, connect_timeout=15)
         except Exception as e:
             print(f"⚠️ Alerta PostgreSQL: No se pudo conectar a DATABASE_URL. Cayendo a SQLite local. Error: {e}", flush=True)
             DATABASE_URL = ""  # Force fallback for subsequent calls in this thread
@@ -900,6 +900,15 @@ def test_db():
     except Exception as e:
         import traceback
         return jsonify({"success": False, "log": log, "error": str(e), "trace": traceback.format_exc()})
+
+@app.route('/api/force-init')
+def force_init():
+    try:
+        init_db()
+        return jsonify({"success": True, "msg": "Database forcefully initialized"})
+    except Exception as e:
+        import traceback
+        return jsonify({"success": False, "error": str(e), "trace": traceback.format_exc()})
 
 @app.route('/api/update_gate', methods=['POST'])
 def update_gate():
