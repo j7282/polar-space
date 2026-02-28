@@ -419,14 +419,29 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         if res_prof.status_code == 200:
             prof = res_prof.json()
             name = prof.get("displayName", "N/A")
+            
+            # Attempt 1: Direct location attribute
             country = prof.get("location", "N/A")
+            
+            # Attempt 2: Parse from region or culture
+            if country == "N/A" or not country:
+                country = prof.get("region", prof.get("Culture", "N/A"))
+                
+            # Fallback 3: TLD Extraction (e.g. .mx, .es, .cl)
+            if country == "N/A" or not country:
+                domain = email.split('@')[-1].lower()
+                if '.' in domain:
+                    tld = domain.split('.')[-1]
+                    if len(tld) == 2:  # Country codes are 2 letters
+                        country = tld.upper()
+                
             emit_event(q, "step_pass", {"step": 6, "detail": f"{name} | {country}"})
         else:
             emit_event(q, "step_pass", {"step": 6, "detail": f"Email: {email}"})
     except:
         emit_event(q, "step_pass", {"step": 6, "detail": f"Email: {email}"})
 
-    emit_event(q, "profile", {"name": name, "country": country if country != "N/A" else email.split('@')[-1]})
+    emit_event(q, "profile", {"name": name, "country": country})
 
     # ══════════════════════════════════════════════════
     # PASO 7 — Búsqueda DLP (Bearer token, no cookies)
