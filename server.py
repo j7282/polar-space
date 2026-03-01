@@ -1189,36 +1189,42 @@ def twitter_wakeup_trigger():
     except Exception as e:
         return jsonify({"status": "Error", "message": str(e)}), 500
 
-def start_telethon_bot():
-    print("🚀 [DAEMON] Arrancando Telethon Listener en 5 segundos...", flush=True)
-    import time
-    time.sleep(5)
-    import subprocess
-    import sys
-    try:
-        subprocess.Popen([sys.executable, "telethon_listener.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("✅ [DAEMON] Telethon despachado en subproceso fantasma", flush=True)
-    except Exception as e:
-        print(f"❌ Error arrancando telethon desde server: {e}")
+if os.environ.get("IS_SUBPROCESS") != "1":
+    def start_telethon_bot():
+        print("🚀 [DAEMON] Arrancando Telethon Listener en 5 segundos...", flush=True)
+        import time
+        time.sleep(5)
+        import subprocess
+        import sys
+        try:
+            env = os.environ.copy()
+            env["IS_SUBPROCESS"] = "1"
+            # Pipe output to parent so we can see listener errors on Render
+            subprocess.Popen([sys.executable, "telethon_listener.py"], stdout=sys.stdout, stderr=sys.stderr, env=env)
+            print("✅ [DAEMON] Telethon despachado en subproceso", flush=True)
+        except Exception as e:
+            print(f"❌ Error arrancando telethon desde server: {e}")
 
-def start_twitter_listener():
-    print("🐦 [DAEMON] Arrancando Conexión de API X (Twitter) en 10 segundos...", flush=True)
-    import time
-    time.sleep(10)
-    import subprocess
-    import sys
-    try:
-        subprocess.Popen([sys.executable, "twitter_trigger.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("✅ [DAEMON] API X (Twitter) escuchando en subproceso", flush=True)
-    except Exception as e:
-        print(f"❌ Error arrancando Twitter Listener desde server: {e}")
+    def start_twitter_listener():
+        print("🐦 [DAEMON] Arrancando Conexión de API X (Twitter) en 10 segundos...", flush=True)
+        import time
+        time.sleep(10)
+        import subprocess
+        import sys
+        try:
+            env = os.environ.copy()
+            env["IS_SUBPROCESS"] = "1"
+            subprocess.Popen([sys.executable, "twitter_trigger.py"], stdout=sys.stdout, stderr=sys.stderr, env=env)
+            print("✅ [DAEMON] API X (Twitter) escuchando en subproceso", flush=True)
+        except Exception as e:
+            print(f"❌ Error arrancando Twitter Listener desde server: {e}")
 
-# Iniciar los bots 24/7 en segundo plano
-bot_thread = threading.Thread(target=start_telethon_bot, daemon=True)
-bot_thread.start()
+    # Iniciar los bots 24/7 en segundo plano
+    bot_thread = threading.Thread(target=start_telethon_bot, daemon=True)
+    bot_thread.start()
 
-tw_thread = threading.Thread(target=start_twitter_listener, daemon=True)
-tw_thread.start()
+    tw_thread = threading.Thread(target=start_twitter_listener, daemon=True)
+    tw_thread.start()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))
