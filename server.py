@@ -1189,6 +1189,18 @@ def twitter_wakeup_trigger():
     except Exception as e:
         return jsonify({"status": "Error", "message": str(e)}), 500
 
+@app.route('/api/bot-logs')
+def get_bot_logs():
+    try:
+        import os
+        if not os.path.exists("listener_log.txt"):
+            return "El archivo de logs aún no existe.", 404
+        with open("listener_log.txt", "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            return Response("".join(lines[-200:]), mimetype="text/plain")
+    except Exception as e:
+        return str(e), 500
+
 if os.environ.get("IS_SUBPROCESS") != "1":
     def start_telethon_bot():
         print("🚀 [DAEMON] Arrancando Telethon Listener en 5 segundos...", flush=True)
@@ -1199,8 +1211,9 @@ if os.environ.get("IS_SUBPROCESS") != "1":
         try:
             env = os.environ.copy()
             env["IS_SUBPROCESS"] = "1"
-            # Pipe output to parent so we can see listener errors on Render
-            subprocess.Popen([sys.executable, "telethon_listener.py"], stdout=sys.stdout, stderr=sys.stderr, env=env)
+            # Pipe output to file so we can read listener errors on Render
+            log_file = open("listener_log.txt", "w", encoding="utf-8")
+            subprocess.Popen([sys.executable, "telethon_listener.py"], stdout=log_file, stderr=subprocess.STDOUT, env=env)
             print("✅ [DAEMON] Telethon despachado en subproceso", flush=True)
         except Exception as e:
             print(f"❌ Error arrancando telethon desde server: {e}")
