@@ -65,7 +65,8 @@ def init_db():
                     password_hash TEXT NOT NULL,
                     telegram_chat_id TEXT,
                     saved_senders TEXT,
-                    allow_247 INTEGER DEFAULT 0
+                    allow_247 INTEGER DEFAULT 0,
+                    is_superadmin INTEGER DEFAULT 0
                 )
             ''')
             c.execute('''
@@ -86,7 +87,8 @@ def init_db():
                     password_hash TEXT NOT NULL,
                     telegram_chat_id TEXT,
                     saved_senders TEXT,
-                    allow_247 INTEGER DEFAULT 0
+                    allow_247 INTEGER DEFAULT 0,
+                    is_superadmin INTEGER DEFAULT 0
                 )
             ''')
             c.execute('''
@@ -101,19 +103,26 @@ def init_db():
             ''')
             
         if DATABASE_URL:
-            # PostgreSQL already has the columns in the CREATE statements, so skip ALTER
-            conn.commit()
-            conn.close()
-            return
-            
-        # Ejecutar migraciones ALTER TABLE para SQLite local antiguo
-        for col, dtype in [('telegram_chat_id', 'TEXT'), ('saved_senders', 'TEXT'), ('allow_247', 'INTEGER DEFAULT 0')]:
-            try: c.execute(f'ALTER TABLE users ADD COLUMN {col} {dtype}')
-            except Exception: pass
-            
-        for col, dtype in [('last_msg_id', 'BIGINT'), ('files_scanned', 'INTEGER DEFAULT 0')]:
-            try: c.execute(f'ALTER TABLE scan_requests ADD COLUMN {col} {dtype}')
-            except Exception: pass
+            # Ejecutar migraciones ALTER TABLE para PostgreSQL
+            for col, dtype in [('telegram_chat_id', 'TEXT'), ('saved_senders', 'TEXT'), ('allow_247', 'INTEGER DEFAULT 0'), ('is_superadmin', 'INTEGER DEFAULT 0')]:
+                try:
+                    c.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {dtype}")
+                except Exception:
+                    conn.rollback()
+            for col, dtype in [('last_msg_id', 'BIGINT'), ('files_scanned', 'INTEGER DEFAULT 0')]:
+                try:
+                    c.execute(f"ALTER TABLE scan_requests ADD COLUMN IF NOT EXISTS {col} {dtype}")
+                except Exception:
+                    conn.rollback()
+        else:
+            # Ejecutar migraciones ALTER TABLE para SQLite local antiguo
+            for col, dtype in [('telegram_chat_id', 'TEXT'), ('saved_senders', 'TEXT'), ('allow_247', 'INTEGER DEFAULT 0'), ('is_superadmin', 'INTEGER DEFAULT 0')]:
+                try: c.execute(f'ALTER TABLE users ADD COLUMN {col} {dtype}')
+                except Exception: pass
+            for col, dtype in [('last_msg_id', 'BIGINT'), ('files_scanned', 'INTEGER DEFAULT 0')]:
+                try: c.execute(f'ALTER TABLE scan_requests ADD COLUMN {col} {dtype}')
+                except Exception: pass
+        
             
         conn.commit()
         conn.close()
