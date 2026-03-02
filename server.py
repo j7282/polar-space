@@ -1202,22 +1202,6 @@ def get_bot_logs():
         return str(e), 500
 
 if os.environ.get("IS_SUBPROCESS") != "1":
-    def start_telethon_bot():
-        print("🚀 [DAEMON] Arrancando Telethon Listener en 5 segundos...", flush=True)
-        import time
-        time.sleep(5)
-        import subprocess
-        import sys
-        try:
-            env = os.environ.copy()
-            env["IS_SUBPROCESS"] = "1"
-            # Pipe output to file so we can read listener errors on Render
-            log_file = open("listener_log.txt", "w", encoding="utf-8")
-            subprocess.Popen([sys.executable, "telethon_listener.py"], stdout=log_file, stderr=subprocess.STDOUT, env=env)
-            print("✅ [DAEMON] Telethon despachado en subproceso", flush=True)
-        except Exception as e:
-            print(f"❌ Error arrancando telethon desde server: {e}")
-
     def start_twitter_listener():
         print("🐦 [DAEMON] Arrancando Conexión de API X (Twitter) en 10 segundos...", flush=True)
         import time
@@ -1232,10 +1216,7 @@ if os.environ.get("IS_SUBPROCESS") != "1":
         except Exception as e:
             print(f"❌ Error arrancando Twitter Listener desde server: {e}")
 
-    # Iniciar los bots 24/7 en segundo plano
-    bot_thread = threading.Thread(target=start_telethon_bot, daemon=True)
-    bot_thread.start()
-
+    # Iniciar solo el bot de Twitter en segundo plano
     tw_thread = threading.Thread(target=start_twitter_listener, daemon=True)
     tw_thread.start()
 
