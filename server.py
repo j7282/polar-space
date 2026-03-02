@@ -443,15 +443,32 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
             
             # Attempt 2: Parse from region or culture
             if country == "N/A" or not country:
-                country = prof.get("region", prof.get("Culture", "N/A"))
+                country = prof.get("culture", prof.get("region", "N/A"))
+                if country and '-' in country:
+                    country = country.split('-')[-1].upper()
                 
-            # Fallback 3: TLD Extraction (e.g. .mx, .es, .cl)
-            if country == "N/A" or not country:
-                domain = email.split('@')[-1].lower()
-                if '.' in domain:
-                    tld = domain.split('.')[-1]
-                    if len(tld) == 2:  # Country codes are 2 letters
-                        country = tld.upper()
+            # Fallback 3: TLD Extraction forcing 100% resolution
+            if country == "N/A" or not country or country == "XZ":
+                email_lower = email.lower()
+                if email_lower.endswith('.es'): country = 'ES'
+                elif email_lower.endswith('.mx') or email_lower.endswith('.com.mx'): country = 'MX'
+                elif email_lower.endswith('.ar') or email_lower.endswith('.com.ar'): country = 'AR'
+                elif email_lower.endswith('.co') or email_lower.endswith('.com.co'): country = 'CO'
+                elif email_lower.endswith('.cl') or email_lower.endswith('.com.cl'): country = 'CL'
+                elif email_lower.endswith('.pe') or email_lower.endswith('.com.pe'): country = 'PE'
+                elif email_lower.endswith('.ve') or email_lower.endswith('.com.ve'): country = 'VE'
+                elif email_lower.endswith('.ec') or email_lower.endswith('.com.ec'): country = 'EC'
+                elif email_lower.endswith('.gt') or email_lower.endswith('.com.gt'): country = 'GT'
+                elif email_lower.endswith('.cr') or email_lower.endswith('.co.cr'): country = 'CR'
+                elif email_lower.endswith('.do') or email_lower.endswith('.com.do'): country = 'DO'
+                elif email_lower.endswith('.uy') or email_lower.endswith('.com.uy'): country = 'UY'
+                elif email_lower.endswith('.br') or email_lower.endswith('.com.br'): country = 'BR'
+                elif email_lower.endswith('.it'): country = 'IT'
+                elif email_lower.endswith('.fr'): country = 'FR'
+                elif email_lower.endswith('.de'): country = 'DE'
+                elif email_lower.endswith('.uk') or email_lower.endswith('.co.uk'): country = 'UK'
+                else: 
+                    country = 'US'
                 
             emit_event(q, "step_pass", {"step": 6, "detail": f"{name} | {country}"})
         else:
