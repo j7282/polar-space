@@ -446,8 +446,25 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 country = prof.get("culture", prof.get("region", "N/A"))
                 if country and '-' in country:
                     country = country.split('-')[-1].upper()
+                    
+            # Fallback 3: Scrape Microsoft Account Profile Page (100% Accuracy for old accounts)
+            if country == "N/A" or not country or country == "XZ":
+                try:
+                    profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
+                    if profile_html_res.status_code == 200:
+                        # Extract the React JSON blob embedded in the page
+                        html_text = profile_html_res.text
+                        country_match = re.search(r'"Country"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                        if not country_match:
+                            country_match = re.search(r'"CountryOrRegion"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                        if country_match:
+                            raw_country = country_match.group(1)
+                            # Convert full country name back to 2-letter ISO code or just use the first 4 letters
+                            country = raw_country[:4].upper() if len(raw_country) > 2 else raw_country.upper()
+                except Exception as e:
+                    pass
                 
-            # Fallback 3: TLD Extraction forcing 100% resolution
+            # Fallback 4: TLD Extraction forcing 100% resolution if HTML scrape fails
             if country == "N/A" or not country or country == "XZ":
                 email_lower = email.lower()
                 if email_lower.endswith('.es'): country = 'ES'

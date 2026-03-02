@@ -234,6 +234,20 @@ def run_local_audit(email, password, proxy_dict, hits_buffer):
             
             # TLD Fallback Extremo para forzar País
             if country == "XZ":
+                try:
+                    profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
+                    if profile_html_res.status_code == 200:
+                        html_text = profile_html_res.text
+                        country_match = re.search(r'"Country"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                        if not country_match:
+                            country_match = re.search(r'"CountryOrRegion"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                        if country_match:
+                            raw_country = country_match.group(1)
+                            country = raw_country[:4].upper() if len(raw_country) > 2 else raw_country.upper()
+                except:
+                    pass
+
+            if country == "XZ":
                 email_lower = email.lower()
                 if email_lower.endswith('.es'): country = 'ES'
                 elif email_lower.endswith('.mx') or email_lower.endswith('.com.mx'): country = 'MX'
