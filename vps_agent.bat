@@ -11,7 +11,7 @@ echo.
 
 REM Variables esenciales que el script de Python necesita en Windows:
 set DATABASE_URL=postgresql://searchgood_db_il0e_user:j0J25UROGJReJIwaijSeGgTtkKGpCphG@dpg-d6hiadsr85hc739g4l7g-a.oregon-postgres.render.com/searchgood_db_il0e
-set TARGET_GROUP=HOTMAIL HQ
+set TARGET_GROUP=ASTERA (PRIVATE)2
 set FILTER_KEYWORD=HOTMAIL HQ
 
 REM Si tienes llaves de Gemini o Groq, ponlas aqui:
