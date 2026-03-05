@@ -1146,6 +1146,7 @@
                             <tr>
                                 <th>#</th>
                                 <th>Email</th>
+                                <th>Perfil Extendido</th>
                                 <th>Clasificación</th>
                                 <th style="text-align:center">📩 Encontrados</th>
                             </tr>
@@ -1163,6 +1164,7 @@
         let stats = { total: 0, hit: 0, twofa: 0, bad: 0, blocked: 0 };
         let resultIndex = 0;
         let pendingDlpCount = {}; // email -> count (populated by dlp_result event)
+        let pendingProfiles = {}; // email -> profile data
         let pendingRows = {};     // email -> tr element (to update count after done)
         let currentSessionId = null; // Track current manual audit
 
@@ -1237,9 +1239,20 @@
                     ? `<span style="color:var(--red);font-weight:700;font-size:15px">${count} 🚨</span>`
                     : `<span style="color:var(--green);font-size:13px">0 ✅</span>`)
                 : `<span style="color:var(--text-dim);font-size:11px">—</span>`;
+                
+            const p = pendingProfiles[email] || {name:'N/A', country:'N/A', dob:'N/A', language:'N/A', phone:'N/A'};
+            const profileCell = `
+                <div style="font-size:10px; line-height:1.4">
+                    <strong style="color:var(--text-primary);font-size:11px">${p.name}</strong> <span class="badge" style="padding:1px 4px;font-size:9px">${p.country.substring(0,2)}</span><br>
+                    <span style="color:var(--text-dim)">DOB:</span> ${p.dob} | <span style="color:var(--text-dim)">Idiom:</span> ${p.language}<br>
+                    <span style="color:var(--text-dim)">Tel:</span> <span style="font-family:'JetBrains Mono',monospace">${p.phone}</span>
+                </div>
+            `;
+            
             tr.innerHTML = `
                 <td style="color:var(--text-dim)">${resultIndex}</td>
                 <td style="font-family:'JetBrains Mono',monospace; font-size:12px">${email}</td>
+                <td>${profileCell}</td>
                 <td><span class="badge ${badgeClass}">${classification}</span></td>
                 <td style="text-align:center">${countCell}</td>
             `;
@@ -1283,6 +1296,7 @@
             stats = { total: 0, hit: 0, twofa: 0, bad: 0, blocked: 0 };
             resultIndex = 0;
             pendingDlpCount = {};
+            pendingProfiles = {};
             pendingRows = {};
             document.getElementById('resultsBody').innerHTML = '';
             updateStats();
@@ -1365,6 +1379,15 @@
                             break;
 
                         case 'profile':
+                            // Fallback email tracking via currentEmail header
+                            const emailForProfile = msg.email ? msg.email : document.getElementById('currentEmail').textContent;
+                            pendingProfiles[emailForProfile] = {
+                                name: msg.name || 'N/A',
+                                country: msg.country || 'N/A',
+                                dob: msg.dob || 'N/A',
+                                language: msg.language || 'N/A',
+                                phone: msg.phone || 'N/A'
+                            };
                             addLog('pass', `👤 ${msg.name} | ${msg.country}`);
                             break;
 

