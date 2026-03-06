@@ -467,20 +467,25 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                     
                     if name == "N/A" or not name:
                         m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                        if m: name = m.group(1)
+                        if not m: m = re.search(r'<span>Full name</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                        if m: name = m.group(1).strip()
                     
                     m = re.search(r'"(?:Country|CountryOrRegion)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if m: country = m.group(1).upper()
+                    if not m: m = re.search(r'Country or region</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                    if m: country = m.group(1).strip().upper()
                         
                     m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if m: dob = m.group(1)
+                    if not m: m = re.search(r'Date of birth</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                    if m: dob = m.group(1).strip()
                             
                     m = re.search(r'"(?:Language|Locale)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if m: language = m.group(1)
+                    if not m: m = re.search(r'id="locale-picker-link"[^>]*>([^<]+)</a>', html_text, re.IGNORECASE)
+                    if m: language = m.group(1).strip()
 
                     phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
                     if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if phone_matches: phone = phone_matches[0]
+                    if not phone_matches: phone_matches = re.findall(r'Phone\s*(?:linked\s*to)?[^<]*\s*(\+\d[\d\s]+)\s*<', html_text, re.IGNORECASE | re.DOTALL)
+                    if phone_matches: phone = phone_matches[0].strip()
             except Exception:
                 pass
                 
