@@ -462,25 +462,34 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 if profile_html_res.status_code == 200:
                     html_text = profile_html_res.text
                     
-                    # --- Resolver SSO Bridge de Microsoft (JS POST) ---
-                    if "<form" in html_text and 'name="t"' in html_text:
-                        action_m = re.search(r'action="([^"]+)"', html_text, re.IGNORECASE)
-                        t_m = re.search(r'name="t"[^>]*value="([^"]+)"', html_text, re.IGNORECASE)
-                        if action_m and t_m:
-                            action_url = action_m.group(1).replace("&#x3a;", ":").replace("&#x2f;", "/")
-                            bridge_data = {"t": t_m.group(1).replace("&quot;", '"')}
-                            p_m = re.search(r'name="p"[^>]*value="([^"]+)"', html_text, re.IGNORECASE)
-                            if p_m: bridge_data["p"] = p_m.group(1).replace("&quot;", '"')
+                    # --- Resolver SSO Bridge de Microsoft (Bucle de Redirecciones JS) ---
+                    redirect_count = 0
+                    while "<form" in html_text and redirect_count < 5:
+                        form_action = re.search(r'action="([^"]+)"', html_text, re.IGNORECASE)
+                        if form_action:
+                            post_url = form_action.group(1).replace("&#x3a;", ":").replace("&#x2f;", "/")
+                            inputs = re.findall(r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', html_text, re.IGNORECASE)
+                            silent_data = {k: v.replace("&quot;", '"') for k, v in inputs}
+                            try:
+                                profile_html_res = session.post(post_url, data=silent_data, verify=False, timeout=15, allow_redirects=True)
+                                html_text = profile_html_res.text
+                            except: pass
+                            redirect_count += 1
+                        else:
+                            break
                             
-                            profile_html_res = session.post(action_url, data=bridge_data, verify=False, timeout=15)
-                            html_text = profile_html_res.text
-                            # Segunda redireccion JS comun en Microsoft
-                            if "window.location.replace" in html_text:
-                                redir_m = re.search(r'window\.location\.replace\((["\'])(.*?)\1\)', html_text)
-                                if redir_m:
-                                    profile_html_res = session.get(redir_m.group(2), verify=False, timeout=15)
-                                    html_text = profile_html_res.text
-                    # --------------------------------------------------
+                    while "window.location.replace" in html_text and redirect_count < 8:
+                        redir_m = re.search(r'window\.location\.replace\((["\'])(.*?)\1\)', html_text)
+                        if redir_m:
+                            redir_url = redir_m.group(2)
+                            try:
+                                profile_html_res = session.get(redir_url, verify=False, timeout=15, allow_redirects=True)
+                                html_text = profile_html_res.text
+                            except: pass
+                            redirect_count += 1
+                        else:
+                            break
+                    # ----------------------------------------------------------------
                     
                     if name == "N/A" or not name:
                         m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
