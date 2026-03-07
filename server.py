@@ -501,7 +501,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                         try:
                             import json
                             area_matches = re.findall(r'var areaConfig = JSON\.stringify\(({.*?})\);', html_text)
-                            print(f"[DEBUG-RENDER] Microsoft Profile loaded. Length: {len(html_text)}. areaConfig matches: {len(area_matches)}")
+                            emit_event(q, "info", {"message": f"[DEBUG-RENDER] Microsoft Profile HTML Length: {len(html_text)}. areaConfig: {len(area_matches)}"})
                             
                             for am in area_matches:
                                 area = json.loads(am)
@@ -515,7 +515,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                                         name = n_m.group(1).encode('utf-8').decode('unicode_escape')
                                     except Exception as e:
                                         name = n_m.group(1)
-                                        print(f"[DEBUG-RENDER] Unicode error on name: {e}")
+                                        emit_event(q, "warning", {"message": f"[DEBUG-RENDER] Unicode error on name: {e}"})
                                 
                                 d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
                                 if d_m and dob == "N/A": dob = d_m.group(1)
@@ -531,7 +531,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                                             name = n_m.group(1).encode('utf-8').decode('unicode_escape')
                                         except Exception as e:
                                             name = n_m.group(1)
-                                            print(f"[DEBUG-RENDER] Unicode error on cmsName: {e}")
+                                            emit_event(q, "warning", {"message": f"[DEBUG-RENDER] Unicode error on cmsName: {e}"})
                                 if country == "N/A":
                                     c_m = re.search(r'"(?:Country|userMarket)"\s*:\s*"([A-Z]{2})"', dump, re.IGNORECASE)
                                     if c_m and c_m.group(1) != "XZ": country = c_m.group(1)
@@ -539,7 +539,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                                     d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
                                     if d_m and "Date of birth" not in d_m.group(1): dob = d_m.group(1)
                         except Exception as e:
-                            print(f"[DEBUG-RENDER] Exception during JSON extraction: {e}")
+                            emit_event(q, "warning", {"message": f"[DEBUG-RENDER] Exception during JSON extraction: {e}"})
                             pass
                         
                         # --- Fallback string matching ---
