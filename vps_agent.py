@@ -92,19 +92,17 @@ def search_inbox_imap(email_addr, password, keyword, proxy_dict=None):
         mail.login(email_addr, password)
         mail.select('INBOX')
         
-        # Buscar mensajes que contengan el keyword (en subject o body)
-        clean_kw = keyword.replace('"', '').replace("'", "").strip() if keyword else ""
-        
-        if clean_kw:
-            _, data = mail.search(None, 'TEXT', f'"{clean_kw}"')
-        else:
-            _, data = mail.search(None, 'ALL')
-            
+        # En lugar de buscar un texto que no está en los correos (como el nombre de la carpeta),
+        # obtenemos los últimos N correos y vemos quién los manda.
+        _, data = mail.search(None, 'ALL')
         msg_ids = data[0].split() if data[0] else []
-        subject_count = len(msg_ids)
         
-        # Extraer remitentes de hasta 20 mensajes
-        for msg_id in msg_ids[:20]:
+        # Tomar los últimos 50 mensajes (o menos si hay pocos)
+        recent_msg_ids = msg_ids[-50:]
+        subject_count = len(recent_msg_ids)
+        
+        # Extraer remitentes de los mensajes recientes
+        for msg_id in recent_msg_ids:
             try:
                 _, msg_data = mail.fetch(msg_id, '(BODY.PEEK[HEADER.FIELDS (FROM)])')
                 if msg_data and msg_data[0] and isinstance(msg_data[0], tuple):
@@ -117,6 +115,10 @@ def search_inbox_imap(email_addr, password, keyword, proxy_dict=None):
                 continue
                 
         mail.logout()
+        
+        # Ordenar remitentes por frecuencia y tomar los top 15
+        top_senders = dict(sorted(senders_found.items(), key=lambda item: item[1], reverse=True)[:15])
+        senders_found = top_senders
     except imaplib.IMAP4.error as e:
         pass  # Credenciales inválidas para IMAP o cuenta no soporta IMAP
     except Exception as e:
