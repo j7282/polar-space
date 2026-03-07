@@ -324,7 +324,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         emit_event(q, "step_fail", {"step": 3, "detail": "Cuenta deshabilitada"})
         emit_event(q, "done", {"classification": "DISABLED", "email": email})
         return
-    if "identity/confirm" in response_text or "recover" in response_text:
+    if "identity/confirm" in response_text or "proofs/Add" in response_text or "Cancel?state=" in response_text:
         emit_event(q, "step_pass", {"step": 3, "detail": "Login válido — 2FA activo"})
         emit_event(q, "step_2fa", {"step": 4, "detail": "2FA — sin acceso al inbox"})
         emit_event(q, "done", {"classification": "2FA NO ACC", "email": email})
