@@ -453,6 +453,8 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                     print(f"[DEBUG {email}] ❌ Error Outlook Live Res: {sr.text[:200]}")
             except Exception as e:
                 print(f"[DEBUG {email}] ❌ Excepción Outlook Live: {e}")
+                if 'sr' in locals():
+                    print(f"[DEBUG {email}] 📄 Raw body (primeros 300 chars): {sr.text[:300]}")
 
         if getattr(hits_buffer, 'append', None) is not None:
             formatted_senders = ", ".join([f"{addr} ({count})" for addr, count in senders_found.items()])
