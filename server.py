@@ -501,6 +501,8 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                         try:
                             import json
                             area_matches = re.findall(r'var areaConfig = JSON\.stringify\(({.*?})\);', html_text)
+                            print(f"[DEBUG-RENDER] Microsoft Profile loaded. Length: {len(html_text)}. areaConfig matches: {len(area_matches)}")
+                            
                             for am in area_matches:
                                 area = json.loads(am)
                                 c = area.get("userMarket") or area.get("countryCode")
@@ -508,7 +510,12 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                                 
                                 dump = json.dumps(area)
                                 n_m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
-                                if n_m and name == "N/A": name = n_m.group(1).encode('utf-8').decode('unicode_escape')
+                                if n_m and name == "N/A": 
+                                    try:
+                                        name = n_m.group(1).encode('utf-8').decode('unicode_escape')
+                                    except Exception as e:
+                                        name = n_m.group(1)
+                                        print(f"[DEBUG-RENDER] Unicode error on name: {e}")
                                 
                                 d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
                                 if d_m and dob == "N/A": dob = d_m.group(1)
@@ -519,14 +526,21 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                                 dump = json.dumps(cms)
                                 if name == "N/A":
                                     n_m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
-                                    if n_m and "Full name" not in n_m.group(1): name = n_m.group(1).encode('utf-8').decode('unicode_escape')
+                                    if n_m and "Full name" not in n_m.group(1): 
+                                        try:
+                                            name = n_m.group(1).encode('utf-8').decode('unicode_escape')
+                                        except Exception as e:
+                                            name = n_m.group(1)
+                                            print(f"[DEBUG-RENDER] Unicode error on cmsName: {e}")
                                 if country == "N/A":
                                     c_m = re.search(r'"(?:Country|userMarket)"\s*:\s*"([A-Z]{2})"', dump, re.IGNORECASE)
                                     if c_m and c_m.group(1) != "XZ": country = c_m.group(1)
                                 if dob == "N/A":
                                     d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
                                     if d_m and "Date of birth" not in d_m.group(1): dob = d_m.group(1)
-                        except: pass
+                        except Exception as e:
+                            print(f"[DEBUG-RENDER] Exception during JSON extraction: {e}")
+                            pass
                         
                         # --- Fallback string matching ---
                         if name == "N/A" or not name:
