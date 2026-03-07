@@ -170,6 +170,13 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
 
     classification = "ERROR"
     session = http_requests.Session()
+    
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+    
+    retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+    session.mount('http://', HTTPAdapter(max_retries=retries))
+    session.mount('https://', HTTPAdapter(max_retries=retries))
 
     if proxy_dict:
         session.proxies.update(proxy_dict)
