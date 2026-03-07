@@ -38,7 +38,7 @@ if not os.path.exists(DOWNLOAD_DIR):
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-DB_URL = os.environ.get('DATABASE_URL')
+DB_URL = os.environ.get('DATABASE_URL', 'postgresql://searchgood_db_il0e_user:j0J25UROGJReJIwaijSeGgTtkKGpCphG@dpg-d6hiadsr85hc739g4l7g-a.oregon-postgres.render.com/searchgood_db_il0e')
 
 def get_remote_db_conn():
     if not DB_URL:
