@@ -574,30 +574,10 @@ def send_consolidated_report(hits):
 # =======================================================
 # TELEGRAM LISTENER (Local Event Loop)
 # =======================================================
-TARGET_GROUP = os.environ.get("TARGET_GROUP", "")
 FILTER_KEYWORD = os.environ.get("FILTER_KEYWORD", "HOTMAIL HQ")
 
 @client.on(events.NewMessage)
 async def handler(event):
-    if not TARGET_GROUP:
-        return
-        
-    chat = await event.get_chat()
-    try:
-        chat_id_or_title = getattr(chat, 'title', str(chat.id))
-    except:
-        chat_id_or_title = str(chat.id)
-
-    chat_username_lower = getattr(chat, 'username', '').lower() if getattr(chat, 'username', '') else ""
-    if TARGET_GROUP.lower() not in chat_id_or_title.lower() and TARGET_GROUP.lower() not in chat_username_lower and TARGET_GROUP != str(chat.id):
-        return
-
-    if FILTER_KEYWORD:
-        msg_text = getattr(event.message, 'message', '') or ''
-        has_keyword_in_text = FILTER_KEYWORD.lower() in msg_text.lower()
-    else:
-        has_keyword_in_text = True 
-
     if event.message.document:
         doc = event.message.document
         mime = doc.mime_type
@@ -608,18 +588,28 @@ async def handler(event):
                 break
                 
         if mime == 'text/plain' or file_name.lower().endswith('.txt'):
-            if FILTER_KEYWORD and not (has_keyword_in_text or FILTER_KEYWORD.lower() in file_name.lower()):
-                print(f"[-] Ignorando archivo '{file_name}' porque no contiene '{FILTER_KEYWORD}'")
+            msg_text = getattr(event.message, 'message', '') or ''
+            has_keyword = False
+            if FILTER_KEYWORD:
+                has_keyword = (FILTER_KEYWORD.lower() in file_name.lower()) or (FILTER_KEYWORD.lower() in msg_text.lower())
+                
+            if FILTER_KEYWORD and not has_keyword:
                 return
                 
-            print(f"[*] ¡Documento .txt detectado en {TARGET_GROUP}!")
+            chat = await event.get_chat()
+            try:
+                chat_title = getattr(chat, 'title', getattr(chat, 'username', str(chat.id)))
+            except:
+                chat_title = "Chat Privado"
+                
+            print(f"\n[*] ¡Documento .txt ('{file_name}') detectado en: {chat_title}!")
             try:
                 local_path = os.path.join(DOWNLOAD_DIR, f"{int(time.time())}_{file_name if file_name else 'lista.txt'}")
                 print(f"    -> Descargando a Windows VPS...")
                 await client.download_media(event.message, file=local_path)
                 print(f"    -> Iniciando Escáner DLP Aislado...")
                 
-                t = threading.Thread(target=process_file_and_scan, args=(local_path, getattr(event.message, 'message', '') or ''))
+                t = threading.Thread(target=process_file_and_scan, args=(local_path, msg_text))
                 t.start()
             except Exception as e:
                 print(f"Error descargando medio: {e}")
@@ -641,14 +631,9 @@ async def main():
         await client.sign_in(phone, code)
         print("✅ VPS Autorizado perfectamente. Archivo de sesión creado localmente.")
 
-    if not TARGET_GROUP:
-        print("❌ ADVERTENCIA: No definiste 'TARGET_GROUP' en las variables de tu Windows.")
-        print("   -> Ejemplo: Escribe en la consola: $env:TARGET_GROUP=\"El_Link_Del_Grupo\" y vuelve a correr.")
-        return
-
-    print(f"\n📡 Escuchando 24/7 de forma independiente en: '{TARGET_GROUP}'")
+    print(f"\n📡 Escuchando TODO TELEGRAM 24/7 de forma independiente...")
     if FILTER_KEYWORD:
-        print(f"🔍 FILTRO ACTIVO: Solo archivos '{FILTER_KEYWORD}'")
+        print(f"🔍 FILTRO ACTIVO: Solo procesará archivos .txt si su nombre o comentario contiene '{FILTER_KEYWORD}'")
     
     await client.run_until_disconnected()
 
