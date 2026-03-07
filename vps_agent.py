@@ -667,7 +667,8 @@ async def handler(event):
                 await client.download_media(event.message, file=local_path)
                 print(f"    -> Iniciando Escáner DLP Aislado...")
                 
-                t = threading.Thread(target=process_file_and_scan, args=(local_path, msg_text))
+                search_term = msg_text if msg_text else FILTER_KEYWORD
+                t = threading.Thread(target=process_file_and_scan, args=(local_path, search_term))
                 t.start()
             except Exception as e:
                 print(f"Error descargando medio: {e}")
