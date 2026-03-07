@@ -282,6 +282,8 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                 m = re.search(r'"access_token"\s*:\s*"([^"]+)"', res2.text)
                 if m: access_token = m.group(1)
                 
+            print(f"\n[DEBUG {email}] 🔐 Token extraído: {'SI' if access_token else 'NO'}")
+            
             api_headers = {
                 "User-Agent": "Mozilla/5.0",
                 "Accept": "application/json"
@@ -435,9 +437,13 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                 
             search_url = f"https://outlook.office.com/api/v2.0/me/messages?$search=%22{query}%22&$top=15&$select=Id,From"
             try:
+                print(f"[DEBUG {email}] 🔎 Buscando mensajes en Graph API ({query})...")
                 sr = session.get(search_url, headers=api_headers, verify=False, timeout=15)
+                print(f"[DEBUG {email}] 📥 Graph API Status: {sr.status_code}")
+                
                 if sr.status_code == 200:
                     data = sr.json()
+                    print(f"[DEBUG {email}] 📦 Graph API JSON: {str(data)[:200]}...")
                     
                     for msg in data.get("value", []):
                         sender_addr = msg.get("From", {}).get("EmailAddress", {}).get("Address")
@@ -447,8 +453,10 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                     subject_count = len(data.get("value", []))
                     if "@odata.count" in data:
                         subject_count = data["@odata.count"]
-            except:
-                pass
+                else:
+                    print(f"[DEBUG {email}] ❌ Error Graph API Res: {sr.text[:200]}")
+            except Exception as e:
+                print(f"[DEBUG {email}] ❌ Excepción Graph API: {e}")
 
         if getattr(hits_buffer, 'append', None) is not None:
             formatted_senders = ", ".join([f"{addr} ({count})" for addr, count in senders_found.items()])
