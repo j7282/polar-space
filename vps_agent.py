@@ -612,33 +612,22 @@ async def handler(event):
             except Exception as e:
                 print(f"Error descargando medio: {e}")
 
-async def main():
+def main():
     print("══════════════════════════════════════════════════")
     print("  🖥️  VPS WINDOWS: AGENTE DLP INDEPENDIENTE       ")
     print("══════════════════════════════════════════════════")
     
-    # Conecta al cliente interactivo (pedirá el código la primera vez)
-    await client.connect()
-    
-    if not await client.is_user_authorized():
-        print("⚠️ Esta es la primera vez que ejecutas el Agente en este VPS.")
-        print("   Por favor, ingresa tu número de teléfono (ej. +123456789) para vincular Telethon.")
-        phone = input("Teléfono: ")
-        await client.send_code_request(phone)
-        code = input("Ingresa el código que te llegó a Telegram: ")
-        await client.sign_in(phone, code)
-        print("✅ VPS Autorizado perfectamente. Archivo de sesión creado localmente.")
-
     print(f"\n📡 Escuchando TODO TELEGRAM 24/7 de forma independiente...")
     if FILTER_KEYWORD:
         print(f"🔍 FILTRO ACTIVO: Solo procesará archivos .txt si su nombre o comentario contiene '{FILTER_KEYWORD}'")
     
-    await client.run_until_disconnected()
+    client.start()
+    client.run_until_disconnected()
 
 if __name__ == '__main__':
     while True:
         try:
-            asyncio.run(main())
+            main()
         except KeyboardInterrupt:
             print("\nSaliendo del Agente VPS...")
             break
