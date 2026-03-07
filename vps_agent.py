@@ -35,16 +35,23 @@ if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
 # Conexión remota a PostgreSQL en Render
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 DB_URL = os.environ.get('DATABASE_URL')
+
+def get_remote_db_conn():
+    if not DB_URL:
+        return None
+    return psycopg2.connect(DB_URL, connect_timeout=15)
+
 if not DB_URL:
     print("⚠️ ADVERTENCIA: No se definió 'DATABASE_URL'. El Agente no guardará HITS en la BD Remota (Dashboard) pero continuará funcionando de forma Local y hacia el Bot de Telegram.")
 else:
-    def get_remote_db_conn():
-        return psycopg2.connect(DB_URL, connect_timeout=15)
-
     try:
         conn = get_remote_db_conn()
-        conn.close()
+        if conn:
+            conn.close()
         print("✅ Conexión a la Base de Datos Remota (Render) exitosa.")
     except Exception as e:
         print(f"❌ Error conectando a BD Remota: {e}. Continuando de igual forma sin conexión...")
