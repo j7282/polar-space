@@ -585,6 +585,8 @@ async def handler(event):
                 file_name = attr.file_name
                 break
                 
+        print(f"\n[DEBUG] Documento detectado. Nombre: '{file_name}', Mime: '{mime}'")
+                
         if mime == 'text/plain' or file_name.lower().endswith('.txt'):
             msg_text = getattr(event.message, 'message', '') or ''
             has_keyword = False
@@ -592,6 +594,7 @@ async def handler(event):
                 has_keyword = (FILTER_KEYWORD.lower() in file_name.lower()) or (FILTER_KEYWORD.lower() in msg_text.lower())
                 
             if FILTER_KEYWORD and not has_keyword:
+                print(f"[DEBUG] -> Ignorado: No contiene la palabra clave '{FILTER_KEYWORD}'.")
                 return
                 
             chat = await event.get_chat()
