@@ -630,25 +630,29 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
         
         if not target_senders: target_senders = []
         
-        # NO BATCHING: To ensure 100% sender attribution when Microsoft strips metadata (Find_Total Fallback),
-        # we must query each target sender individually.
-        for t in target_senders:
+        # HYBRID BATCHING ENGINE: Maximum speed + 100% precision
+        chunk_size = 10
+        for i in range(0, len(target_senders), chunk_size):
+            chunk = target_senders[i:i+chunk_size]
             api_kw = keyword if keyword and keyword != "HOTMAIL HQ" else ""
-            query_string = f'(from:{t}) "{api_kw}"' if api_kw else f'(from:{t})'
+            
+            # 1. Turbo Mode: Buscar los 10 de golpe
+            or_query = " OR ".join([f"from:{s}" for s in chunk])
+            query_string = f'({or_query}) "{api_kw}"' if api_kw else f'({or_query})'
             
             payload = search_payload_tmpl.copy()
             payload["EntityRequests"][0]["Query"]["QueryString"] = query_string
             payload["AnswerEntityRequests"][0]["Query"]["QueryString"] = query_string
             
-            print(f"[DEBUG vps_agent] Buscando en API: {query_string}")
+            print(f"[DEBUG vps_agent] Buscando en API (Turbo Batch): {query_string}")
+            
             try:
                 res_s = session.post("https://outlook.live.com/search/api/v2/query?n=124&cv=tNZ1DVP5NhDwG%2FDUCelaIu.124", json=payload, headers=api_headers, verify=False, timeout=15)
                 if res_s.status_code == 200:
                     data = res_s.json()
+                    chunk_senders_explicit = False
                     
-                    found_in_loop = False
-
-                    # Intento 1: EntityResponses (Formato Conversación)
+                    # Extraer remitentes explícitos si Microsoft los envió
                     res_blocks = data.get("EntityResponses", [])
                     if res_blocks:
                         convs = res_blocks[0].get("DisplayableEntities", [])
@@ -658,10 +662,9 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                                 sender_addr = c.get("Conversation", {}).get("SenderAddress", "").lower()
                                 if sender_addr:
                                     senders_found[sender_addr] = senders_found.get(sender_addr, 0) + 1
-                                    found_in_loop = True
+                                    chunk_senders_explicit = True
                                     
-                    # Intento 2: EntitySets (Formato alternativo de Microsoft en Cuentas Antiguas/Latinoamérica)
-                    if not found_in_loop:
+                    if not chunk_senders_explicit:
                         for es in data.get("EntitySets", []):
                             for rs in es.get("ResultSets", []):
                                 results_list = rs.get("Results", [])
@@ -672,15 +675,16 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                                         if not sender:
                                             summary = r.get("HitHighlightedSummary", "").lower()
                                             if summary:
-                                                if t.lower() in summary:
-                                                    senders_found[t.lower()] = senders_found.get(t.lower(), 0) + 1
-                                                    found_in_loop = True
+                                                for t in chunk:
+                                                    if t.lower() in summary:
+                                                        senders_found[t.lower()] = senders_found.get(t.lower(), 0) + 1
+                                                        chunk_senders_explicit = True
                                         elif sender:
                                             senders_found[sender.lower()] = senders_found.get(sender.lower(), 0) + 1
-                                            found_in_loop = True
-                                        
-                    # Intento 3: Total Flag (Fallback Extremo si Microsoft omite SenderAddress y Summary por completo como en cuentas AR/MX)
-                    if not found_in_loop:
+                                            chunk_senders_explicit = True
+
+                    # 2. Detector de Blind Hits (Microsoft ocultó el remitente)
+                    if not chunk_senders_explicit:
                         def find_total(obj):
                             if isinstance(obj, dict):
                                 if "Total" in obj and isinstance(obj["Total"], int): return obj["Total"]
@@ -695,8 +699,24 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                         
                         t_found = find_total(data)
                         if t_found and t_found > 0:
-                            senders_found[t.lower()] = senders_found.get(t.lower(), 0) + t_found
-
+                            print(f"[DEBUG vps_agent] ⚠️ Blind Hit Detectado (Total={t_found}) sin remitente. Iniciando Rastreo Fino (1x1)...")
+                            # 3. Precision Mode: Desempacar el chunk bloqueado y buscar 1 por 1
+                            for t in chunk:
+                                q_str_solo = f'(from:{t}) "{api_kw}"' if api_kw else f'(from:{t})'
+                                p_solo = search_payload_tmpl.copy()
+                                p_solo["EntityRequests"][0]["Query"]["QueryString"] = q_str_solo
+                                p_solo["AnswerEntityRequests"][0]["Query"]["QueryString"] = q_str_solo
+                                try:
+                                    res_solo = session.post("https://outlook.live.com/search/api/v2/query?n=124&cv=tNZ1DVP5NhDwG%2FDUCelaIu.124", json=p_solo, headers=api_headers, verify=False, timeout=15)
+                                    if res_solo.status_code == 200:
+                                        d_solo = res_solo.json()
+                                        t_solo = find_total(d_solo)
+                                        if t_solo and t_solo > 0:
+                                            senders_found[t.lower()] = senders_found.get(t.lower(), 0) + t_solo
+                                            print(f"[DEBUG vps_agent] 🎯 Hit Asignado con Éxito: {t} ({t_solo})")
+                                except Exception as e2:
+                                    print(f"[DEBUG vps_agent] Error en búsqueda 1x1: {e2}")
+                                time.sleep(0.3) # Rate limit protection for fine targeting
             except Exception as e:
                 print(f"[DEBUG vps_agent] Error en búsqueda de bandeja por API: {e}")
                 
