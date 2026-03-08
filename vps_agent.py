@@ -623,8 +623,9 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
         chunk_size = 10
         for i in range(0, len(target_senders), chunk_size):
             chunk = target_senders[i:i+chunk_size]
-            or_query = " OR ".join([f"from:{s}" for s in chunk])
-            query_string = f'({or_query}) "{keyword}"' if keyword else f'({or_query})'
+            # Do not inject the default dashboard folder tag into the actual API query string
+            api_kw = keyword if keyword and keyword != "HOTMAIL HQ" else ""
+            query_string = f'({or_query}) "{api_kw}"' if api_kw else f'({or_query})'
             
             payload = search_payload_tmpl.copy()
             payload["EntityRequests"][0]["Query"]["QueryString"] = query_string
