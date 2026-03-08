@@ -528,8 +528,15 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
                             d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
                             if d_m: 
                                 extr = d_m.group(1).strip()
-                                # Asegurar que es una fecha válida (tiene números) y no un texto de etiqueta (ej. "Date de naissance")
                                 if any(char.isdigit() for char in extr): dob = extr
+                                
+                    # Last ditch JSON check on raw HTML text
+                    if dob == "N/A":
+                        m_j = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                        if m_j:
+                            ex = m_j.group(1).strip()
+                            if any(char.isdigit() for char in ex): dob = ex
+
                 except Exception as e: print(f"[DEBUG vps_agent] JSON Ex: {e}")
 
                 if name == "N/A" or not name:
@@ -541,10 +548,11 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
                     if not m: m = re.search(r'Country or region</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
                     if m: country = m.group(1).strip().upper()
                 if dob == "N/A":
-                    m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if not m: m = re.search(r'(?:Date of birth|Date de naissance|Fecha de nacimiento)</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
-                    if m: 
-                        extr = m.group(1).strip()
+                    # Busca el label visual
+                    m_span = re.search(r'>\s*(?:Date of birth|Date de naissance|Fecha de nacimiento|Data di nascita|Geburtsdatum)\s*<.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                    if not m_span: m_span = re.search(r'(?:Date of birth|Date de naissance|Fecha de nacimiento).*?<div[^>]*>([^<]+)</div>', html_text, re.IGNORECASE | re.DOTALL)
+                    if m_span: 
+                        extr = m_span.group(1).strip()
                         if any(char.isdigit() for char in extr): dob = extr
                 phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
                 if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
