@@ -630,14 +630,11 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
         
         if not target_senders: target_senders = []
         
-        # Batch senders in 10s to minimize API calls like server.py
-        chunk_size = 10
-        for i in range(0, len(target_senders), chunk_size):
-            chunk = target_senders[i:i+chunk_size]
-            or_query = " OR ".join([f"from:{s}" for s in chunk])
-            # Do not inject the default dashboard folder tag into the actual API query string
+        # NO BATCHING: To ensure 100% sender attribution when Microsoft strips metadata (Find_Total Fallback),
+        # we must query each target sender individually.
+        for t in target_senders:
             api_kw = keyword if keyword and keyword != "HOTMAIL HQ" else ""
-            query_string = f'({or_query}) "{api_kw}"' if api_kw else f'({or_query})'
+            query_string = f'(from:{t}) "{api_kw}"' if api_kw else f'(from:{t})'
             
             payload = search_payload_tmpl.copy()
             payload["EntityRequests"][0]["Query"]["QueryString"] = query_string
@@ -648,33 +645,42 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                 res_s = session.post("https://outlook.live.com/search/api/v2/query?n=124&cv=tNZ1DVP5NhDwG%2FDUCelaIu.124", json=payload, headers=api_headers, verify=False, timeout=15)
                 if res_s.status_code == 200:
                     data = res_s.json()
+                    
+                    found_in_loop = False
+
+                    # Intento 1: EntityResponses (Formato Conversación)
                     res_blocks = data.get("EntityResponses", [])
                     if res_blocks:
                         convs = res_blocks[0].get("DisplayableEntities", [])
-                        subject_count += len(convs)
-                        for c in convs:
-                            sender_addr = c.get("Conversation", {}).get("SenderAddress", "").lower()
-                            if sender_addr:
-                                senders_found[sender_addr] = senders_found.get(sender_addr, 0) + 1
-                                
-                    # Intento 2: EntitySets (Formato alternativo de Microsoft en Cuentas Antiguas/Latinoamérica)
-                    for es in data.get("EntitySets", []):
-                        for rs in es.get("ResultSets", []):
-                            results_list = rs.get("Results", [])
-                            subject_count += len(results_list)
-                            for r in results_list:
-                                sender = r.get("Sender", "")
-                                if not sender:
-                                    summary = r.get("HitHighlightedSummary", "").lower()
-                                    if summary:
-                                        for t in chunk:
-                                            if t.lower() in summary:
-                                                senders_found[t.lower()] = senders_found.get(t.lower(), 0) + 1
-                                elif sender:
-                                    senders_found[sender.lower()] = senders_found.get(sender.lower(), 0) + 1
+                        if convs:
+                            subject_count += len(convs)
+                            for c in convs:
+                                sender_addr = c.get("Conversation", {}).get("SenderAddress", "").lower()
+                                if sender_addr:
+                                    senders_found[sender_addr] = senders_found.get(sender_addr, 0) + 1
+                                    found_in_loop = True
                                     
+                    # Intento 2: EntitySets (Formato alternativo de Microsoft en Cuentas Antiguas/Latinoamérica)
+                    if not found_in_loop:
+                        for es in data.get("EntitySets", []):
+                            for rs in es.get("ResultSets", []):
+                                results_list = rs.get("Results", [])
+                                if results_list:
+                                    subject_count += len(results_list)
+                                    for r in results_list:
+                                        sender = r.get("Sender", "")
+                                        if not sender:
+                                            summary = r.get("HitHighlightedSummary", "").lower()
+                                            if summary:
+                                                if t.lower() in summary:
+                                                    senders_found[t.lower()] = senders_found.get(t.lower(), 0) + 1
+                                                    found_in_loop = True
+                                        elif sender:
+                                            senders_found[sender.lower()] = senders_found.get(sender.lower(), 0) + 1
+                                            found_in_loop = True
+                                        
                     # Intento 3: Total Flag (Fallback Extremo si Microsoft omite SenderAddress y Summary por completo como en cuentas AR/MX)
-                    if not senders_found and len(chunk) > 0:
+                    if not found_in_loop:
                         def find_total(obj):
                             if isinstance(obj, dict):
                                 if "Total" in obj and isinstance(obj["Total"], int): return obj["Total"]
@@ -689,9 +695,10 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                         
                         t_found = find_total(data)
                         if t_found and t_found > 0:
-                            senders_found[chunk[0].lower()] = senders_found.get(chunk[0].lower(), 0) + t_found
+                            senders_found[t.lower()] = senders_found.get(t.lower(), 0) + t_found
+
             except Exception as e:
-                print(f"[DEBUG vps_agent] Error en búsqueda de bandeja: {e}")
+                print(f"[DEBUG vps_agent] Error en búsqueda de bandeja por API: {e}")
                 
         # Order Top
         senders_found = dict(sorted(senders_found.items(), key=lambda item: item[1], reverse=True)[:15])
