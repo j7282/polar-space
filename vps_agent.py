@@ -354,7 +354,9 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
     try:
         session.headers.pop("Host", None)
         res1 = session.get(auth_url, verify=False, timeout=20, allow_redirects=True)
-        if res1.status_code != 200: return
+        if res1.status_code != 200: 
+            print(f"[DEBUG vps_agent {email}] Error Auth 1: Status {res1.status_code}")
+            return
             
         ppft_match = re.search(r'name="PPFT"[^>]*value="([^"]+)"', res1.text)
         if not ppft_match: ppft_match = re.search(r'name=\\"PPFT\\"[^>]*value=\\"([^\\"]+)\\"', res1.text)
@@ -363,7 +365,9 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
         pl_match = re.search(r'urlPost\s*[\"\']?\s*:\s*[\"\']([^\"\']+)[\"\']', res1.text)
         if not pl_match: pl_match = re.search(r'urlPost\s*:\s*"([^"]+)"', res1.text)
             
-        if not ppft_match or not pl_match: return
+        if not ppft_match or not pl_match: 
+            print(f"[DEBUG vps_agent {email}] Error Auth 1: No se extrajo PPFT o PL. (Quizás proxy bloqueado o IP baneada temporamente)")
+            return
             
         ppft = ppft_match.group(1)
         post_url = pl_match.group(1)
@@ -412,10 +416,14 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
         if not location:
             code_in_body = re.search(r'code=([^&"\']+)', response_text)
             if code_in_body: location = f"?code={code_in_body.group(1)}"
-            else: return
+            else: 
+                print(f"[DEBUG vps_agent {email}] Error Auth 2: Login Fallido (Credenciales inválidas, 2FA, o requiere verificación)")
+                return
                 
         code_match = re.search(r'code=([^&]+)', location)
-        if not code_match: return
+        if not code_match: 
+            print(f"[DEBUG vps_agent {email}] Error Auth 2: Sin Auth Code en Location. Posible cuenta bloqueada o requiere SMS.")
+            return
             
         auth_code = code_match.group(1)
         
