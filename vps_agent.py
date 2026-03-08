@@ -563,7 +563,6 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
             "EntityRequests": [{
                 "EntityType": "Conversation",
                 "ContentSources": ["Exchange"],
-                "Provenances": ["Exchange"],
                 "Filter": {
                     "Or": [
                         {"Term": {"DistinguishedFolderName": "msgfolderroot"}},
@@ -571,11 +570,35 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
                     ]
                 },
                 "From": 0,
-                "Query": {"QueryString": ""},  # To be filled
+                "Query": {"QueryString": ""},
+                "RefiningQueries": None,
                 "Size": 25,
+                "Sort": [
+                    {"Field": "Score", "SortDirection": "Desc", "Count": 3},
+                    {"Field": "Time", "SortDirection": "Desc"}
+                ],
                 "EnableTopResults": True,
                 "TopResultsCount": 3
-            }]
+            }],
+            "AnswerEntityRequests": [{
+                "Query": {"QueryString": ""},
+                "EntityTypes": ["Event", "File"],
+                "From": 0,
+                "Size": 100,
+                "EnableAsyncResolution": True
+            }],
+            "QueryAlterationOptions": {
+                "EnableSuggestion": True,
+                "EnableAlteration": True,
+                "SupportedRecourseDisplayTypes": [
+                    "Suggestion",
+                    "NoResultModification",
+                    "NoResultFolderRefinerModification",
+                    "NoRequeryModification",
+                    "Modification"
+                ]
+            },
+            "LogicalId": "446c567a-02d9-b739-b9ca-616e0d45905c"
         }
         
         if not target_senders: target_senders = []
@@ -590,10 +613,11 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
             
             payload = search_payload_tmpl.copy()
             payload["EntityRequests"][0]["Query"]["QueryString"] = query_string
+            payload["AnswerEntityRequests"][0]["Query"]["QueryString"] = query_string
             
             print(f"[DEBUG vps_agent] Buscando en API: {query_string}")
             try:
-                res_s = session.post("https://substrate.office.com/search/api/v1/query", json=payload, headers=api_headers, verify=False, timeout=15)
+                res_s = session.post("https://outlook.live.com/search/api/v2/query?n=124&cv=tNZ1DVP5NhDwG%2FDUCelaIu.124", json=payload, headers=api_headers, verify=False, timeout=15)
                 if res_s.status_code == 200:
                     data = res_s.json()
                     res_blocks = data.get("EntityResponses", [])
@@ -633,7 +657,7 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
                 # Default para cuentas genéricas .com que no revelan el país en el profile
                 country = 'US'
         # Mejora del país: también detectar por dominio del email si aun es XZ
-        if country == "XZ" or country == "US":
+        if country == "XZ" or country == "N/A" or not country:
             email_domain = email.lower().split('@')[-1]
             if email_domain.endswith('.fr') or email_domain == 'hotmail.fr' or email_domain == 'live.fr' or email_domain.endswith('.fr'): country = 'FR'
             elif email_domain.endswith('.es') or email_domain == 'hotmail.es': country = 'ES'
