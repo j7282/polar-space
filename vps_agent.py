@@ -653,6 +653,40 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                             sender_addr = c.get("Conversation", {}).get("SenderAddress", "").lower()
                             if sender_addr:
                                 senders_found[sender_addr] = senders_found.get(sender_addr, 0) + 1
+                                
+                    # Intento 2: EntitySets (Formato alternativo de Microsoft en Cuentas Antiguas/Latinoamérica)
+                    for es in data.get("EntitySets", []):
+                        for rs in es.get("ResultSets", []):
+                            results_list = rs.get("Results", [])
+                            subject_count += len(results_list)
+                            for r in results_list:
+                                sender = r.get("Sender", "")
+                                if not sender:
+                                    summary = r.get("HitHighlightedSummary", "").lower()
+                                    if summary:
+                                        for t in chunk:
+                                            if t.lower() in summary:
+                                                senders_found[t.lower()] = senders_found.get(t.lower(), 0) + 1
+                                elif sender:
+                                    senders_found[sender.lower()] = senders_found.get(sender.lower(), 0) + 1
+                                    
+                    # Intento 3: Total Flag (Fallback Extremo si Microsoft omite SenderAddress y Summary por completo como en cuentas AR/MX)
+                    if not senders_found and len(chunk) > 0:
+                        def find_total(obj):
+                            if isinstance(obj, dict):
+                                if "Total" in obj and isinstance(obj["Total"], int): return obj["Total"]
+                                for v in obj.values():
+                                    res = find_total(v)
+                                    if res is not None: return res
+                            elif isinstance(obj, list):
+                                for item in obj:
+                                    res = find_total(item)
+                                    if res is not None: return res
+                            return None
+                        
+                        t_found = find_total(data)
+                        if t_found and t_found > 0:
+                            senders_found[chunk[0].lower()] = senders_found.get(chunk[0].lower(), 0) + t_found
             except Exception as e:
                 print(f"[DEBUG vps_agent] Error en búsqueda de bandeja: {e}")
                 
