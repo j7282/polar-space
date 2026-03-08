@@ -956,6 +956,9 @@ async def handler(event):
                 break
                 
         print(f"\n[DEBUG] Documento detectado. Nombre: '{file_name}', Mime: '{mime}'")
+        
+        if file_name and file_name.startswith("reporte_hits_"):
+            return
                 
         if mime == 'text/plain' or file_name.lower().endswith('.txt'):
             msg_text = getattr(event.message, 'message', '') or ''
