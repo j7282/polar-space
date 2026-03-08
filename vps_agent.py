@@ -526,7 +526,10 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
                             if c_m and c_m.group(1) != "XZ": country = c_m.group(1)
                         if dob == "N/A":
                             d_m = re.search(r'"(?:BirthDate|dob)"\s*:\s*"([^"]+)"', dump, re.IGNORECASE)
-                            if d_m and "Date of birth" not in d_m.group(1): dob = d_m.group(1)
+                            if d_m: 
+                                extr = d_m.group(1).strip()
+                                # Asegurar que es una fecha válida (tiene números) y no un texto de etiqueta (ej. "Date de naissance")
+                                if any(char.isdigit() for char in extr): dob = extr
                 except Exception as e: print(f"[DEBUG vps_agent] JSON Ex: {e}")
 
                 if name == "N/A" or not name:
@@ -539,8 +542,10 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
                     if m: country = m.group(1).strip().upper()
                 if dob == "N/A":
                     m = re.search(r'"(?:BirthDate|DateOfBirth|dob)"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
-                    if not m: m = re.search(r'Date of birth</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
-                    if m and "Date of birth" not in m.group(1): dob = m.group(1).strip()
+                    if not m: m = re.search(r'(?:Date of birth|Date de naissance|Fecha de nacimiento)</span>.*?<span[^>]*>([^<]+)</span>', html_text, re.IGNORECASE | re.DOTALL)
+                    if m: 
+                        extr = m.group(1).strip()
+                        if any(char.isdigit() for char in extr): dob = extr
                 phone_matches = re.findall(r'"ProofName"\s*:\s*"(\+\d+[^"]+)"', html_text, re.IGNORECASE)
                 if not phone_matches: phone_matches = re.findall(r'"PhoneNumber"\s*:\s*"([^"]+)"', html_text, re.IGNORECASE)
                 if phone_matches: phone = phone_matches[0].strip()
