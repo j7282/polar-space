@@ -528,28 +528,28 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
         # Order Top
         senders_found = dict(sorted(senders_found.items(), key=lambda item: item[1], reverse=True)[:15])
             
-            if country == "XZ":
-                email_lower = email.lower()
-                if email_lower.endswith('.es'): country = 'ES'
-                elif email_lower.endswith('.mx') or email_lower.endswith('.com.mx'): country = 'MX'
-                elif email_lower.endswith('.ar') or email_lower.endswith('.com.ar'): country = 'AR'
-                elif email_lower.endswith('.co') or email_lower.endswith('.com.co'): country = 'CO'
-                elif email_lower.endswith('.cl') or email_lower.endswith('.cl'): country = 'CL'
-                elif email_lower.endswith('.pe') or email_lower.endswith('.com.pe'): country = 'PE'
-                elif email_lower.endswith('.ve') or email_lower.endswith('.com.ve'): country = 'VE'
-                elif email_lower.endswith('.ec') or email_lower.endswith('.com.ec'): country = 'EC'
-                elif email_lower.endswith('.gt') or email_lower.endswith('.com.gt'): country = 'GT'
-                elif email_lower.endswith('.cr') or email_lower.endswith('.co.cr'): country = 'CR'
-                elif email_lower.endswith('.do') or email_lower.endswith('.com.do'): country = 'DO'
-                elif email_lower.endswith('.uy') or email_lower.endswith('.com.uy'): country = 'UY'
-                elif email_lower.endswith('.br') or email_lower.endswith('.com.br'): country = 'BR'
-                elif email_lower.endswith('.it'): country = 'IT'
-                elif email_lower.endswith('.fr'): country = 'FR'
-                elif email_lower.endswith('.de'): country = 'DE'
-                elif email_lower.endswith('.uk') or email_lower.endswith('.co.uk'): country = 'UK'
-                else: 
-                    # Default para cuentas genéricas .com que no revelan el país en el profile
-                    country = 'US'
+        if country == "XZ":
+            email_lower = email.lower()
+            if email_lower.endswith('.es'): country = 'ES'
+            elif email_lower.endswith('.mx') or email_lower.endswith('.com.mx'): country = 'MX'
+            elif email_lower.endswith('.ar') or email_lower.endswith('.com.ar'): country = 'AR'
+            elif email_lower.endswith('.co') or email_lower.endswith('.com.co'): country = 'CO'
+            elif email_lower.endswith('.cl') or email_lower.endswith('.cl'): country = 'CL'
+            elif email_lower.endswith('.pe') or email_lower.endswith('.com.pe'): country = 'PE'
+            elif email_lower.endswith('.ve') or email_lower.endswith('.com.ve'): country = 'VE'
+            elif email_lower.endswith('.ec') or email_lower.endswith('.com.ec'): country = 'EC'
+            elif email_lower.endswith('.gt') or email_lower.endswith('.com.gt'): country = 'GT'
+            elif email_lower.endswith('.cr') or email_lower.endswith('.co.cr'): country = 'CR'
+            elif email_lower.endswith('.do') or email_lower.endswith('.com.do'): country = 'DO'
+            elif email_lower.endswith('.uy') or email_lower.endswith('.com.uy'): country = 'UY'
+            elif email_lower.endswith('.br') or email_lower.endswith('.com.br'): country = 'BR'
+            elif email_lower.endswith('.it'): country = 'IT'
+            elif email_lower.endswith('.fr'): country = 'FR'
+            elif email_lower.endswith('.de'): country = 'DE'
+            elif email_lower.endswith('.uk') or email_lower.endswith('.co.uk'): country = 'UK'
+            else: 
+                # Default para cuentas genéricas .com que no revelan el país en el profile
+                country = 'US'
         # Mejora del país: también detectar por dominio del email si aun es XZ
         if country == "XZ" or country == "US":
             email_domain = email.lower().split('@')[-1]
