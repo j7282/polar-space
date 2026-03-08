@@ -870,7 +870,7 @@ def process_file_and_scan(file_path, keyword=""):
             
             if super_admins:
                 print("🧠 Generando Reporte de Salud (Llama-3) para Súper Administrador...")
-                summary_text = generate_exec_summary(len(raw_pairs), len(valid_creds), hits_buffer)
+                summary_text = generate_exec_summary(len(creds_text.split('\n')), len(valid_creds), hits_buffer)
                 token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
                 for s_cid in super_admins:
                     try:
