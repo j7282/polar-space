@@ -294,7 +294,6 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
     import random as _r; time.sleep(_r.uniform(0.8, 2.2))  # anti-rate-limit delay aleatorio
 
     # Tiempos simulados (milisegundos) para evadir heurísticas de MS
-    import time
     t_start = int(time.time() * 1000) - _r.randint(15000, 35000) # Tiempo de carga simulado hace 15-35s
     t_submit = int(time.time() * 1000)
     duracion_llenado = t_submit - t_start
