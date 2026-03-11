@@ -1240,12 +1240,13 @@
                     : `<span style="color:var(--green);font-size:13px">0 ✅</span>`)
                 : `<span style="color:var(--text-dim);font-size:11px">—</span>`;
                 
-            const p = pendingProfiles[email] || {name:'N/A', country:'N/A', dob:'N/A', language:'N/A', phone:'N/A'};
+            const p = pendingProfiles[email] || {name:'N/A', country:'N/A', dob:'N/A', language:'N/A', phone:'N/A', points:'0', points_today:'0', balance:'0.00'};
             const profileCell = `
                 <div style="font-size:10px; line-height:1.4">
                     <strong style="color:var(--text-primary);font-size:11px">${p.name}</strong> <span class="badge" style="padding:1px 4px;font-size:9px">${p.country.substring(0,2)}</span><br>
                     <span style="color:var(--text-dim)">DOB:</span> ${p.dob} | <span style="color:var(--text-dim)">Idiom:</span> ${p.language}<br>
-                    <span style="color:var(--text-dim)">Tel:</span> <span style="font-family:'JetBrains Mono',monospace">${p.phone}</span>
+                    <span style="color:var(--text-dim)">Tel:</span> <span style="font-family:'JetBrains Mono',monospace">${p.phone}</span><br>
+                    <span style="color:var(--text-dim)">🎁 Disp:</span> <strong style="color:var(--cyan)">${p.points}</strong> | <span style="color:var(--text-dim)">Hoy:</span> <span style="color:var(--green)">${p.points_today}</span> | <span style="color:var(--text-dim)">💳 Saldo:</span> <strong style="color:var(--yellow)">$${p.balance}</strong>
                 </div>
             `;
             
@@ -1386,9 +1387,12 @@
                                 country: msg.country || 'N/A',
                                 dob: msg.dob || 'N/A',
                                 language: msg.language || 'N/A',
-                                phone: msg.phone || 'N/A'
+                                phone: msg.phone || 'N/A',
+                                points: msg.points || '0',
+                                points_today: msg.points_today || '0',
+                                balance: msg.balance || '0.00'
                             };
-                            addLog('pass', `👤 ${msg.name} | ${msg.country}`);
+                            addLog('pass', `👤 ${msg.name} | ${msg.country} | 🎁: ${msg.points} | 💳: $${msg.balance}`);
                             break;
 
                         case 'dlp_result':
