@@ -185,12 +185,17 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         proxy_display = "Directa"
     emit_event(q, "info", {"message": f"Proxy: {proxy_display}"})
 
-    # ─── User-Agent mobile (CLAVE para que microsoftonline devuelva PPFT) ───
-    mobile_ua = (
-        "Mozilla/5.0 (Linux; Android 9; V2218A Build/PQ3B.190801.08041932; wv) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 "
-        "Chrome/91.0.4472.114 Mobile Safari/537.36"
-    )
+    # ─── Pool de User-Agents rotativos (anti-fingerprint) ───
+    import random as _ua_rand
+    ua_pool = [
+        "Mozilla/5.0 (Linux; Android 9; V2218A Build/PQ3B.190801.08041932; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 12; SM-S908E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.41 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 8.1.0; Moto G (5S) Plus) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 10; Nokia 8.3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.105 Mobile Safari/537.36",
+    ]
+    mobile_ua = _ua_rand.choice(ua_pool)
 
     session.headers.update({
         "User-Agent": mobile_ua,
