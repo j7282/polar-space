@@ -369,8 +369,12 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
             emit_event(q, "done", {"classification": "BAD PASS", "email": email})
             return
 
-    emit_event(q, "step_pass", {"step": 3, "detail": f"Login OK (HTTP {res2.status_code})"})
-    classification = "LOGIN OK"
+    if location and location.startswith("msauth://"):
+        emit_event(q, "step_pass", {"step": 3, "detail": "Login OK (App Redirect)"})
+        classification = "LOGIN OK"
+    else:
+        emit_event(q, "step_pass", {"step": 3, "detail": f"Login OK (HTTP {res2.status_code})"})
+        classification = "LOGIN OK"
 
 
     # ══════════════════════════════════════════════════
@@ -380,6 +384,9 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
 
     if not location:
         code_in_body = re.search(r'code=([^&"\']+)', response_text)
+        if not code_in_body and location:
+            code_in_body = re.search(r'code=([^&]+)', location)
+            
         if code_in_body:
             location = f"?code={code_in_body.group(1)}"
         else:

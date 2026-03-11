@@ -428,6 +428,9 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
         # PASO 4 - Auth Code
         if not location:
             code_in_body = re.search(r'code=([^&"\']+)', response_text)
+            if not code_in_body and location:
+                code_in_body = re.search(r'code=([^&]+)', location)
+            
             if code_in_body: location = f"?code={code_in_body.group(1)}"
             else: 
                 print(f"[DEBUG vps_agent {email}] Error Auth 2: Login Fallido (Credenciales inválidas, 2FA, o requiere verificación)")
