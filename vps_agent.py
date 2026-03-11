@@ -1005,9 +1005,13 @@ def process_file_and_scan(file_path, keyword=""):
     
     def scan_cred_worker(cred):
         email, pwd = cred.split(':', 1)
+        # Generar un puerto aleatorio de IPRoyal de la lista expandida
+        import random as _rnd_proxy
+        port_list = [12321, 32325] + list(range(11200, 11251)) + list(range(51200, 51251))
+        r_port = _rnd_proxy.choice(port_list)
         iproyal_auth = {
-            "http": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321",
-            "https": "http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:12321"
+            "http": f"http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:{r_port}",
+            "https": f"http://iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj@geo.iproyal.com:{r_port}"
         }
         run_local_audit(email.strip(), pwd.strip(), iproyal_auth, hits_buffer, keyword, user_targets_dict=target_senders_list)
         time.sleep(random.uniform(0.5, 1.2))

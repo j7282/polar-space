@@ -1267,10 +1267,11 @@ def start_audit():
             proxies = load_proxies_from_text(default_proxies_env.replace(",", "\n"))
             print(f"[AUTO-PROXY] Cargados {len(proxies)} proxies desde env DEFAULT_PROXIES")
         else:
-            # 🔑 INYECCIÓN MAESTRA: Si no hay proxy en la UI, usar IPRoyal por defecto
-            iproyal_url = "geo.iproyal.com:12321:iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj"
-            proxies = load_proxies_from_text(iproyal_url)
-            print("[AUTO-PROXY] Usando proxy Residencial IPRoyal por defecto para scan manual.")
+            # 🔑 INYECCIÓN MAESTRA: Si no hay proxy en la UI, generar pool robusto de sesiones IPRoyal
+            port_list = [12321, 32325] + list(range(11200, 11251)) + list(range(51200, 51251))
+            iproyal_pool = "\n".join([f"geo.iproyal.com:{port}:iFWCvoL1YiGW0U1T:gAPHeqlqy33PlWrj" for port in port_list])
+            proxies = load_proxies_from_text(iproyal_pool)
+            print(f"[AUTO-PROXY] Autogenerado Pool Residencial IPRoyal ({len(proxies)} proxies) para evitar Rate Limit.")
 
     session_id = str(random.randint(10000, 99999))
     audit_queues[session_id] = queue.Queue()
