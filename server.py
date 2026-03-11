@@ -295,10 +295,11 @@ def run_audit(q, email, password, keyword="", sender="", proxy_dict=None, tg_cha
         "hisRegion": "", "hisScaleUnit": "", "passwd": password,
         "ps": "2", "psRNGCDefaultType": "", "psRNGCEntropy": "", "psRNGCSLK": "",
         "canary": "", "ctx": "", "hpgrequestid": "",
-        "PPFT": ppft, "PPSX": "Passport", "NewUser": "1", "FoundMSAs": "",
-        "fspost": "0", "i21": "0", "CookieDisclosure": "0",
-        "IsFidoSupported": "1", "isSignupPost": "0",
-        "isRecoveryAttemptPost": "0", "i19": str(duracion_llenado)
+        "PPFT": ppft, "PPSX": "", "NewUser": "1", "FoundMSAs": "",
+        "fspost": "0", "i21": "0", "CookieBream": "",
+        "isFidoSupported": "1", "isSAASupported": "1",
+        "isCBAv2Supported": "0", "isCookieBannerShown": "false",
+        "isRoamMacSupported": "0", "iSoLP": "0", "i2": "1", "i17": "0", "i18": "", "i19": str(duracion_llenado)
     }
 
     session.headers.pop("Host", None)

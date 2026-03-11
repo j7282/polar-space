@@ -389,9 +389,10 @@ def run_local_audit(email, password, iproyal_auth, hits_buffer, keyword="", user
             "LoginOptions": "3", "lrt": "", "lrtPartition": "", "hisRegion": "", "hisScaleUnit": "",
             "passwd": password, "ps": "2", "psRNGCDefaultType": "", "psRNGCEntropy": "", "psRNGCSLK": "",
             "canary": "", "ctx": "", "hpgrequestid": "", "PPFT": ppft,
-            "PPSX": "Passport", "NewUser": "1", "FoundMSAs": "", "fspost": "0",
-            "i21": "0", "CookieDisclosure": "0", "IsFidoSupported": "1", "isSignupPost": "0",
-            "isRecoveryAttemptPost": "0", "i19": str(duracion_llenado)
+            "PPSX": "", "NewUser": "1", "FoundMSAs": "", "fspost": "0",
+            "i21": "0", "CookieBream": "", "isFidoSupported": "1", "isSAASupported": "1", 
+            "isCBAv2Supported": "0", "isCookieBannerShown": "false",
+            "isRoamMacSupported": "0", "iSoLP": "0", "i2": "1", "i17": "0", "i18": "", "i19": str(duracion_llenado)
         }
         
         session.headers.update({
